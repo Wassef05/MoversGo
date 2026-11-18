@@ -1,0 +1,8 @@
+﻿node_modules/
+uploads/
+.env
+.mongo-data/
+
+
+# Persistent dev mongo dump
+.mongo_dev_dump.json

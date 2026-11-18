@@ -1,0 +1,17 @@
+{
+  "name": "moveflow-tn",
+  "version": "2.0.0",
+  "description": "MoveFlow TN - Plateforme Marketplace Professionnelle de Déménagement en Tunisie",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently -n \"BACKEND,FRONTEND\" -c \"blue,magenta\" \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:backend": "npm --prefix backend run dev",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "seed": "npm --prefix backend run seed",
+    "build": "npm --prefix frontend run build"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}
+

@@ -1,0 +1,64 @@
+# Dependencies
+node_modules/
+*/node_modules/
+
+# Environment variables & secrets
+.env
+.env.*
+!.env.example
+backend/.env
+frontend/.env
+*.env.local
+
+# Build outputs
+dist/
+dist-ssr/
+frontend/dist/
+build/
+
+# Uploads & Media (ignore uploaded files but keep folder structure)
+backend/uploads/*
+!backend/uploads/.gitkeep
+uploads/
+
+# Database dumps & local runtime data
+.mongo-data/
+*/.mongo-data/
+.db_data/
+*/.db_data/
+*.dump.json
+*dump*.json
+.mongo_dev_dump*
+.test_dump.json
+
+# Scratch & test scripts
+scratch_test.js
+scratch/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Editor & OS files
+.vscode/
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Local database files
+backend/data/
+data/
+*.wt
+*.turtle
+*.lock
+WiredTiger*
