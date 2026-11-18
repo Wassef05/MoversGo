@@ -67,7 +67,7 @@ export function Sidebar({ isOpen, onClose }) {
     { label: "Avis & Retours", href: "/client/reviews", icon: Star },
     { label: "Notifications", href: "/client/notifications", icon: Bell, badge: unreadCount },
     { label: "Mon profil", href: "/client/profile", icon: User },
-    { label: "Paramètres", href: "/client/settings", icon: Settings },
+    { label: "Tickets d'Assistance", href: "/client/support", icon: LifeBuoy },
   ];
 
   const companyLinks = [
@@ -88,7 +88,7 @@ export function Sidebar({ isOpen, onClose }) {
     { label: "Statistiques & CA", href: "/company/statistics", icon: BarChart3 },
     { label: "Notifications", href: "/company/notifications", icon: Bell, badge: unreadCount },
     { label: "Fiche Entreprise", href: "/company/profile", icon: Building2 },
-    { label: "Paramètres", href: "/company/settings", icon: Settings },
+    { label: "Tickets d'Assistance", href: "/company/support", icon: LifeBuoy },
   ];
 
   const adminLinks = [

@@ -49,15 +49,16 @@ const createTicket = catchAsync(async (req, res) => {
   // Notify admins in real-time
   const io = req.app.get('io');
   const admins = await User.find({ role: 'admin' }).select('_id');
+  const roleLabel = req.user.role === 'company' ? '🚚 Déménageur' : '👤 Client';
   for (const admin of admins) {
     await createNotification({
       recipientId: admin._id,
       title: 'Nouveau ticket de support 🎫',
-      message: `${req.user.firstName}: ${subject.trim()}`,
+      message: `${roleLabel} (${req.user.firstName}): ${subject.trim()}`,
       type: 'system',
       entityType: 'user',
       entityId: ticket._id,
-      link: `/admin/support/${ticket._id}`,
+      link: `/admin/support?tab=${category === 'dispute' ? 'disputes' : 'tickets'}`,
       io,
     });
   }
@@ -163,25 +164,28 @@ const addMessage = catchAsync(async (req, res) => {
   // Real-time notifications
   const io = req.app.get('io');
   if (isAdmin) {
+    const ticketOwner = await User.findById(ticket.user).select('role firstName lastName email');
+    const userRole = ticketOwner?.role || 'client';
+    const userLink = userRole === 'company' ? '/company/support' : '/client/support';
+
     // Notify user in real-time
     await createNotification({
       recipientId: ticket.user,
       title: 'Réponse à votre ticket 💬',
-      message: `Le support MoversGo a répondu à: "${ticket.subject}".`,
+      message: `Le support MoversGo a répondu à votre demande: "${ticket.subject}".`,
       type: 'system',
       entityType: 'user',
       entityId: ticket._id,
-      link: `/support/${ticket._id}`,
+      link: userLink,
       io,
     });
 
     // Send email notification to user
     try {
-      const ticketUser = await User.findById(ticket.user).select('firstName lastName email');
-      if (ticketUser?.email) {
+      if (ticketOwner?.email) {
         await sendTicketReplyNotification({
-          userEmail: ticketUser.email,
-          userName: `${ticketUser.firstName || ''} ${ticketUser.lastName || ''}`.trim() || 'Client',
+          userEmail: ticketOwner.email,
+          userName: `${ticketOwner.firstName || ''} ${ticketOwner.lastName || ''}`.trim() || (userRole === 'company' ? 'Partenaire' : 'Client'),
           ticketSubject: ticket.subject,
           replyMessage: content.trim(),
         });
@@ -189,18 +193,21 @@ const addMessage = catchAsync(async (req, res) => {
     } catch (emailErr) {
       console.warn('Could not send ticket reply email notification:', emailErr.message);
     }
-  } else if (ticket.assignedAdmin) {
-    // Notify assigned admin
-    await createNotification({
-      recipientId: ticket.assignedAdmin,
-      title: 'Nouvelle réponse utilisateur',
-      message: `${req.user.firstName} a répondu sur le ticket "${ticket.subject}".`,
-      type: 'system',
-      entityType: 'user',
-      entityId: ticket._id,
-      link: `/admin/support/${ticket._id}`,
-      io,
-    });
+  } else {
+    // Notify admins that the user/company replied
+    const admins = await User.find({ role: 'admin' }).select('_id');
+    for (const admin of admins) {
+      await createNotification({
+        recipientId: admin._id,
+        title: 'Nouveau message sur ticket support 📩',
+        message: `${req.user.firstName} (${req.user.role === 'company' ? 'Déménageur' : 'Client'}): Réponse sur "${ticket.subject}".`,
+        type: 'system',
+        entityType: 'user',
+        entityId: ticket._id,
+        link: `/admin/support?tab=${ticket.category === 'dispute' ? 'disputes' : 'tickets'}`,
+        io,
+      });
+    }
   }
 
   await ticket.populate('messages.sender', 'firstName lastName profileImage role');
@@ -283,14 +290,18 @@ const updateTicketStatus = catchAsync(async (req, res) => {
 
   // Notify ticket owner
   const io = req.app.get('io');
+  const ticketOwner = await User.findById(ticket.user).select('role firstName lastName email');
+  const userRole = ticketOwner?.role || 'client';
+  const userLink = userRole === 'company' ? '/company/support' : '/client/support';
+
   await createNotification({
     recipientId: ticket.user,
-    title: `Ticket ${status ? `mis à jour (${status})` : 'mis à jour'}`,
+    title: `Ticket ${status ? `mis à jour (${status})` : 'mis à jour'} 🎫`,
     message: `Le statut de votre demande de support "${ticket.subject}" est désormais: ${ticket.status}.`,
     type: 'system',
     entityType: 'user',
     entityId: ticket._id,
-    link: `/support/${ticket._id}`,
+    link: userLink,
     io,
   });
 

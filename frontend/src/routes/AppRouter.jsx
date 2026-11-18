@@ -50,6 +50,9 @@ import { ClientNewReviewPage } from "../pages/client/ClientNewReviewPage";
 import { ClientNotificationsPage } from "../pages/client/ClientNotificationsPage";
 import { ClientProfilePage } from "../pages/client/ClientProfilePage";
 
+// Common Shared Pages
+import { UserSupportPage } from "../pages/common/UserSupportPage";
+
 // Company Pages
 import { CompanyDashboardPage } from "../pages/company/CompanyDashboardPage";
 import { CompanyRecommendationsPage } from "../pages/company/CompanyRecommendationsPage";
@@ -158,6 +161,8 @@ export function AppRouter() {
           <Route path="reviews" element={<ClientReviewsPage />} />
           <Route path="reviews/new" element={<ClientNewReviewPage />} />
           <Route path="notifications" element={<ClientNotificationsPage />} />
+          <Route path="support" element={<UserSupportPage role="client" />} />
+          <Route path="support/:id" element={<UserSupportPage role="client" />} />
           <Route path="profile" element={<ClientProfilePage />} />
           <Route path="settings" element={<ClientProfilePage />} />
         </Route>
@@ -197,6 +202,8 @@ export function AppRouter() {
           <Route path="documents" element={<CompanyDocumentsPage />} />
           <Route path="statistics" element={<CompanyStatisticsPage />} />
           <Route path="notifications" element={<CompanyNotificationsPage />} />
+          <Route path="support" element={<UserSupportPage role="company" />} />
+          <Route path="support/:id" element={<UserSupportPage role="company" />} />
           <Route path="profile" element={<CompanyProfilePage />} />
           <Route path="settings" element={<CompanyProfilePage />} />
         </Route>
@@ -243,6 +250,8 @@ export function AppRouter() {
         <Route path="/bookings/:id" element={<SmartRoleRedirect prefix="bookings" />} />
         <Route path="/requests" element={<SmartRoleRedirect prefix="requests" />} />
         <Route path="/requests/:id" element={<SmartRoleRedirect prefix="requests" />} />
+        <Route path="/support" element={<SmartRoleRedirect prefix="support" />} />
+        <Route path="/support/:id" element={<SmartRoleRedirect prefix="support" />} />
 
         {/* ERROR / FALLBACK ROUTES */}
         <Route path="/403" element={<ForbiddenPage />} />
