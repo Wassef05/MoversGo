@@ -20,4 +20,8 @@ export const supportService = {
     // Returns {success, data: {ticket: {...}}, message}
     return await apiClient.post(`/support/${id}/messages`, { content });
   },
+
+  async closeTicket(id) {
+    return await apiClient.patch(`/support/${id}/close`);
+  },
 };

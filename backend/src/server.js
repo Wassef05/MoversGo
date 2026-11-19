@@ -175,6 +175,18 @@ const startServer = async () => {
   // Initialize Socket.IO handlers
   initSocket(io);
 
+  // Automatic cleanup of expired archived support tickets (past 4-day retention)
+  try {
+    const { cleanupExpiredTickets } = require('./controllers/support.controller');
+    cleanupExpiredTickets().catch((err) => console.warn('Initial ticket cleanup warning:', err.message));
+    // Sweep every 1 hour
+    setInterval(() => {
+      cleanupExpiredTickets().catch((err) => console.warn('Hourly ticket cleanup sweep warning:', err.message));
+    }, 60 * 60 * 1000);
+  } catch (cleanErr) {
+    console.warn('Could not initialize support ticket auto-cleanup worker:', cleanErr.message);
+  }
+
   // Start HTTP server
   server.listen(PORT, () => {
     console.log('\n🚀 ═══════════════════════════════════════');

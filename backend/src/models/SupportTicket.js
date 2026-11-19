@@ -43,6 +43,21 @@ const supportTicketSchema = new mongoose.Schema(
       ref: 'Booking',
       default: null,
     },
+    // Archive & Automatic 4-day deletion fields
+    isArchived: {
+      type: Boolean,
+      default: false,
+    },
+    archivedAt: {
+      type: Date,
+      default: null,
+    },
+    autoDeleteAt: {
+      type: Date,
+      default: null,
+    },
+    resolvedAt: Date,
+    closedAt: Date,
     // Message thread
     messages: [
       {
@@ -67,8 +82,6 @@ const supportTicketSchema = new mongoose.Schema(
         },
       },
     ],
-    resolvedAt: Date,
-    closedAt: Date,
   },
   {
     timestamps: true,
@@ -78,9 +91,12 @@ const supportTicketSchema = new mongoose.Schema(
 
 supportTicketSchema.index({ user: 1 });
 supportTicketSchema.index({ status: 1 });
+supportTicketSchema.index({ isArchived: 1 });
 supportTicketSchema.index({ priority: -1 });
 supportTicketSchema.index({ assignedAdmin: 1 });
 supportTicketSchema.index({ createdAt: -1 });
+// MongoDB native TTL index: automatically deletes document when autoDeleteAt arrives (4 days after closing)
+supportTicketSchema.index({ autoDeleteAt: 1 }, { expireAfterSeconds: 0 });
 
 module.exports = mongoose.model('SupportTicket', supportTicketSchema);
 

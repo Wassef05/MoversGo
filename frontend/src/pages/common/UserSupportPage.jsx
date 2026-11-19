@@ -26,6 +26,9 @@ import {
   Loader2,
   ArrowRight,
   Sparkles,
+  Archive,
+  Lock,
+  Trash2,
 } from "lucide-react";
 
 export function UserSupportPage({ role = "client" }) {
@@ -238,6 +241,51 @@ export function UserSupportPage({ role = "client" }) {
   };
 
   // Badges helpers
+  const [closingTicketId, setClosingTicketId] = useState(null);
+
+  const handleCloseTicket = async (ticketId) => {
+    if (
+      !window.confirm(
+        "Voulez-vous clôturer et archiver ce ticket d'assistance ?\n\nUne fois fermé, il sera conservé dans vos archives pendant 4 jours, puis définitivement supprimé de manière automatique."
+      )
+    ) {
+      return;
+    }
+    setClosingTicketId(ticketId);
+    try {
+      const res = await supportService.closeTicket(ticketId);
+      const updated = res?.data?.ticket || res?.ticket || res?.data;
+      if (updated) {
+        setSelectedTicket(updated);
+        setTickets((prev) =>
+          prev.map((t) => ((t._id || t.id) === ticketId ? updated : t))
+        );
+      } else {
+        await fetchMyTickets();
+      }
+      toast.success("Ticket clôturé et archivé avec succès !", {
+        description: "Il sera automatiquement et définitivement supprimé après 4 jours.",
+      });
+    } catch (err) {
+      toast.error(err?.message || "Erreur lors de la clôture du ticket.");
+    } finally {
+      setClosingTicketId(null);
+    }
+  };
+
+  const getDeletionCountdown = (ticket) => {
+    if (!ticket || (ticket.status !== "closed" && !ticket.isArchived)) return null;
+    const target = ticket.autoDeleteAt
+      ? new Date(ticket.autoDeleteAt)
+      : new Date(new Date(ticket.closedAt || ticket.updatedAt || Date.now()).getTime() + 4 * 24 * 60 * 60 * 1000);
+    const diffMs = target.getTime() - Date.now();
+    const diffDays = Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
+    return {
+      diffDays,
+      formattedDate: formatDate(target),
+    };
+  };
+
   const getPriorityBadge = (priority) => {
     switch (priority) {
       case "urgent":
@@ -253,8 +301,9 @@ export function UserSupportPage({ role = "client" }) {
 
   const getStatusBadge = (status) => {
     switch (status) {
-      case "resolved":
       case "closed":
+        return "bg-slate-100 text-slate-800 border-slate-300";
+      case "resolved":
         return "bg-emerald-100 text-emerald-800 border-emerald-300";
       case "in_progress":
         return "bg-sky-100 text-sky-800 border-sky-300";
@@ -280,7 +329,13 @@ export function UserSupportPage({ role = "client" }) {
 
   // Filtered tickets
   const filteredTickets = tickets.filter((t) => {
-    if (statusFilter !== "all" && t.status !== statusFilter) return false;
+    if (statusFilter !== "all") {
+      if (statusFilter === "closed") {
+        if (t.status !== "closed" && !t.isArchived) return false;
+      } else {
+        if (t.status !== statusFilter) return false;
+      }
+    }
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       const s = (t.subject || "").toLowerCase();
@@ -293,7 +348,8 @@ export function UserSupportPage({ role = "client" }) {
   const openTicketsCount = tickets.filter(
     (t) => t.status === "open" || t.status === "in_progress" || t.status === "waiting_response"
   ).length;
-  const resolvedTicketsCount = tickets.filter((t) => t.status === "resolved" || t.status === "closed").length;
+  const resolvedTicketsCount = tickets.filter((t) => t.status === "resolved").length;
+  const closedArchivedCount = tickets.filter((t) => t.status === "closed" || t.isArchived).length;
 
   return (
     <div className="space-y-6">
@@ -365,14 +421,14 @@ export function UserSupportPage({ role = "client" }) {
         </div>
         <div className="p-4 rounded-2xl bg-white border border-slate-200/80 shadow-2xs flex items-center justify-between">
           <div>
-            <span className="text-slate-400 text-[11px] font-bold uppercase tracking-wider block">
-              Délai de Réponse
+            <span className="text-slate-500 text-[11px] font-bold uppercase tracking-wider block">
+              Archivés (Suppr. 4j)
             </span>
-            <span className="text-lg font-black text-slate-800 mt-1 block">
-              &lt; 2 Heures
+            <span className="text-2xl font-black text-slate-700 mt-1 block">
+              {closedArchivedCount}
             </span>
           </div>
-          <Clock className="w-6 h-6 text-[#800020] opacity-80" />
+          <Archive className="w-6 h-6 text-slate-400 opacity-80" />
         </div>
       </div>
 
@@ -399,17 +455,23 @@ export function UserSupportPage({ role = "client" }) {
                 { id: "open", label: "Ouverts" },
                 { id: "waiting_response", label: "Réponse reçue" },
                 { id: "resolved", label: "Résolus" },
+                { id: "closed", label: "Archivés (4j)" },
               ].map((f) => (
                 <button
                   key={f.id}
                   onClick={() => setStatusFilter(f.id)}
-                  className={`px-3 py-1.5 rounded-xl font-bold text-[11px] transition-colors whitespace-nowrap ${
+                  className={`px-3 py-1.5 rounded-xl font-bold text-[11px] transition-colors whitespace-nowrap cursor-pointer ${
                     statusFilter === f.id
                       ? "bg-[#800020] text-white"
                       : "bg-white text-slate-600 hover:bg-slate-100 border border-slate-200"
                   }`}
                 >
                   {f.label}
+                  {f.id === "closed" && closedArchivedCount > 0 && (
+                    <span className={`ml-1.5 px-1.5 py-0.2 rounded-full text-[9px] ${statusFilter === 'closed' ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-800'}`}>
+                      {closedArchivedCount}
+                    </span>
+                  )}
                 </button>
               ))}
             </div>
@@ -467,7 +529,9 @@ export function UserSupportPage({ role = "client" }) {
                             t.status
                           )}`}
                         >
-                          {t.status === "open"
+                          {t.status === "closed" || t.isArchived
+                            ? `Archivé (${getDeletionCountdown(t)?.diffDays || 4}j)`
+                            : t.status === "open"
                             ? "Nouveau"
                             : t.status === "waiting_response"
                             ? "Réponse Support"
@@ -535,6 +599,8 @@ export function UserSupportPage({ role = "client" }) {
                           ? "Réponse reçue de l'administration"
                           : selectedTicket.status === "resolved"
                           ? "✓ Résolu"
+                          : selectedTicket.status === "closed"
+                          ? "📦 Fermé & Archivé"
                           : selectedTicket.status}
                       </span>
                     </div>
@@ -547,14 +613,54 @@ export function UserSupportPage({ role = "client" }) {
                     </p>
                   </div>
 
-                  {selectedTicket.category === "dispute" && (
-                    <div className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-rose-50 text-rose-800 border border-rose-200 text-xs font-bold flex-shrink-0">
-                      <Scale className="w-4 h-4 text-rose-600" />
-                      <span>Dossier sous Médiation</span>
-                    </div>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {selectedTicket.status !== "closed" && !selectedTicket.isArchived && (
+                      <button
+                        onClick={() => handleCloseTicket(selectedTicket._id || selectedTicket.id)}
+                        disabled={closingTicketId === (selectedTicket._id || selectedTicket.id)}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-100 text-slate-700 text-xs font-bold transition-all shadow-2xs cursor-pointer"
+                        title="Clôturer et archiver ce ticket (suppression automatique après 4 jours)"
+                      >
+                        {closingTicketId === (selectedTicket._id || selectedTicket.id) ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin text-[#800020]" />
+                        ) : (
+                          <Archive className="w-3.5 h-3.5 text-slate-600" />
+                        )}
+                        <span>Fermer &amp; Archiver</span>
+                      </button>
+                    )}
+
+                    {selectedTicket.category === "dispute" && (
+                      <div className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-rose-50 text-rose-800 border border-rose-200 text-xs font-bold flex-shrink-0">
+                        <Scale className="w-4 h-4 text-rose-600" />
+                        <span>Dossier sous Médiation</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
+
+              {/* Archive Info Card if Closed */}
+              {(selectedTicket.status === "closed" || selectedTicket.isArchived) && (
+                <div className="p-4 mx-5 mt-4 rounded-2xl bg-amber-50 border-2 border-amber-200/90 flex items-start gap-3 shadow-xs">
+                  <div className="w-8 h-8 rounded-xl bg-amber-200/60 text-amber-900 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <Archive className="w-4 h-4 text-amber-800" />
+                  </div>
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <h4 className="font-bold text-xs text-amber-950">
+                        Ticket Clôturé &amp; Placé dans l'Archive
+                      </h4>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-200/80 text-amber-900 font-mono">
+                        Suppression automatique dans {getDeletionCountdown(selectedTicket)?.diffDays || 4} jour(s)
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-amber-800 leading-relaxed font-normal">
+                      Ce dossier a été résolu et clôturé. Il est actuellement conservé dans les archives et sera <strong>définitivement supprimé de manière automatique le {getDeletionCountdown(selectedTicket)?.formattedDate}</strong> (délai de rétention de 4 jours).
+                    </p>
+                  </div>
+                </div>
+              )}
 
               {/* Messages Stream */}
               <div className="flex-1 overflow-y-auto p-5 space-y-4 bg-slate-50/50">
@@ -627,41 +733,48 @@ export function UserSupportPage({ role = "client" }) {
                 )}
               </div>
 
-              {/* Reply Form */}
-              <form onSubmit={handleSendReply} className="p-4 border-t border-slate-100 bg-white space-y-3">
-                <textarea
-                  rows={2}
-                  value={replyText}
-                  onChange={(e) => setReplyText(e.target.value)}
-                  placeholder="Écrire une réponse ou apporter des détails supplémentaires à l'équipe support..."
-                  className="w-full p-3 rounded-2xl bg-slate-50 border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-[#800020]/20 focus:border-[#800020] leading-relaxed"
-                />
-
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-[11px] text-slate-400 flex items-center gap-1">
-                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>L'équipe reçoit une notification instantanée</span>
-                  </span>
-
-                  <button
-                    type="submit"
-                    disabled={replySending || !replyText.trim()}
-                    className="px-5 py-2.5 rounded-xl bg-[#800020] hover:bg-[#68001a] disabled:opacity-50 text-white font-bold text-xs flex items-center gap-1.5 shadow-md transition-all cursor-pointer"
-                  >
-                    {replySending ? (
-                      <>
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        <span>Envoi...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Send className="w-3.5 h-3.5" />
-                        <span>Envoyer ma réponse</span>
-                      </>
-                    )}
-                  </button>
+              {/* Reply Form or Locked Notice */}
+              {selectedTicket.status === "closed" || selectedTicket.isArchived ? (
+                <div className="p-4 border-t border-slate-100 bg-slate-50 flex items-center justify-center gap-2 text-xs text-slate-500 font-medium rounded-b-3xl">
+                  <Lock className="w-4 h-4 text-slate-400" />
+                  <span>Ce ticket est fermé et archivé. Le fil de discussion est verrouillé (suppression sous {getDeletionCountdown(selectedTicket)?.diffDays || 4} jours).</span>
                 </div>
-              </form>
+              ) : (
+                <form onSubmit={handleSendReply} className="p-4 border-t border-slate-100 bg-white space-y-3">
+                  <textarea
+                    rows={2}
+                    value={replyText}
+                    onChange={(e) => setReplyText(e.target.value)}
+                    placeholder="Écrire une réponse ou apporter des détails supplémentaires à l'équipe support..."
+                    className="w-full p-3 rounded-2xl bg-slate-50 border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-[#800020]/20 focus:border-[#800020] leading-relaxed"
+                  />
+
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-[11px] text-slate-400 flex items-center gap-1">
+                      <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>L'équipe reçoit une notification instantanée</span>
+                    </span>
+
+                    <button
+                      type="submit"
+                      disabled={replySending || !replyText.trim()}
+                      className="px-5 py-2.5 rounded-xl bg-[#800020] hover:bg-[#68001a] disabled:opacity-50 text-white font-bold text-xs flex items-center gap-1.5 shadow-md transition-all cursor-pointer"
+                    >
+                      {replySending ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          <span>Envoi...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Send className="w-3.5 h-3.5" />
+                          <span>Envoyer ma réponse</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </form>
+              )}
             </>
           ) : (
             <div className="flex-1 flex flex-col items-center justify-center p-8 text-center space-y-4">

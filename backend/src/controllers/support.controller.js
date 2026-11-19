@@ -14,6 +14,31 @@ const { createNotification } = require('../services/notification.service');
 const { sendTicketReplyNotification } = require('../services/email.service');
 
 /**
+ * Automatically delete closed tickets that have passed their 4-day retention period.
+ */
+const cleanupExpiredTickets = async () => {
+  try {
+    const now = new Date();
+    const fourDaysAgo = new Date(Date.now() - 4 * 24 * 60 * 60 * 1000);
+    const result = await SupportTicket.deleteMany({
+      status: 'closed',
+      $or: [
+        { autoDeleteAt: { $lte: now } },
+        { closedAt: { $lte: fourDaysAgo } },
+        { isArchived: true, archivedAt: { $lte: fourDaysAgo } },
+      ],
+    });
+    if (result.deletedCount > 0) {
+      console.log(`🧹 [Archivage Support] ${result.deletedCount} ticket(s) fermé(s) depuis 4 jours supprimé(s) définitivement.`);
+    }
+    return result.deletedCount;
+  } catch (err) {
+    console.error('Erreur nettoyage tickets expirés:', err.message);
+    return 0;
+  }
+};
+
+/**
  * POST /api/v1/support
  * Authenticated user creates a support ticket
  */
@@ -71,12 +96,23 @@ const createTicket = catchAsync(async (req, res) => {
  * User views their submitted support tickets
  */
 const getMyTickets = catchAsync(async (req, res) => {
+  // Purge any closed tickets past the 4-day retention limit
+  await cleanupExpiredTickets();
+
   const page = Math.max(1, parseInt(req.query.page, 10) || 1);
   const limit = Math.max(1, Math.min(100, parseInt(req.query.limit, 10) || 20));
-  const { status, priority, category } = req.query;
+  const { status, priority, category, isArchived } = req.query;
 
   const filter = { user: req.user._id };
-  if (status) filter.status = status;
+  if (status) {
+    if (status === 'archived') {
+      filter.$or = [{ status: 'closed' }, { isArchived: true }];
+    } else {
+      filter.status = status;
+    }
+  }
+  if (isArchived === 'true') filter.isArchived = true;
+  if (isArchived === 'false') filter.isArchived = { $ne: true };
   if (priority) filter.priority = priority;
   if (category) filter.category = category;
 
@@ -130,6 +166,14 @@ const addMessage = catchAsync(async (req, res) => {
 
   if (!isAdmin && !isOwner) {
     return forbidden(res, 'Vous ne pouvez pas ajouter de message à ce ticket.');
+  }
+
+  // Prevent sending messages to closed/archived tickets scheduled for deletion
+  if (ticket.status === 'closed' || ticket.isArchived) {
+    return badRequest(
+      res,
+      'Ce ticket est fermé et archivé. Aucun nouveau message ne peut y être ajouté car il est programmé pour une suppression définitive sous 4 jours.'
+    );
   }
 
   const { content, attachments } = req.body;
@@ -221,12 +265,23 @@ const addMessage = catchAsync(async (req, res) => {
  * Admin views all support tickets with filters
  */
 const getAllTickets = catchAsync(async (req, res) => {
+  // Purge any closed tickets past the 4-day retention limit
+  await cleanupExpiredTickets();
+
   const page = Math.max(1, parseInt(req.query.page, 10) || 1);
   const limit = Math.max(1, Math.min(100, parseInt(req.query.limit, 10) || 20));
-  const { status, priority, category, search } = req.query;
+  const { status, priority, category, search, isArchived } = req.query;
 
   const filter = {};
-  if (status) filter.status = status;
+  if (status) {
+    if (status === 'archived') {
+      filter.$or = [{ status: 'closed' }, { isArchived: true }];
+    } else {
+      filter.status = status;
+    }
+  }
+  if (isArchived === 'true') filter.isArchived = true;
+  if (isArchived === 'false') filter.isArchived = { $ne: true };
   if (priority) filter.priority = priority;
   if (category) filter.category = category;
 
@@ -272,7 +327,17 @@ const updateTicketStatus = catchAsync(async (req, res) => {
     }
     ticket.status = status;
     if (status === 'resolved') ticket.resolvedAt = new Date();
-    if (status === 'closed') ticket.closedAt = new Date();
+    if (status === 'closed') {
+      ticket.closedAt = new Date();
+      ticket.isArchived = true;
+      ticket.archivedAt = new Date();
+      // Set automatic permanent deletion in 4 days
+      ticket.autoDeleteAt = new Date(Date.now() + 4 * 24 * 60 * 60 * 1000);
+    } else {
+      ticket.isArchived = false;
+      ticket.archivedAt = null;
+      ticket.autoDeleteAt = null;
+    }
   }
 
   if (priority) {
@@ -294,10 +359,17 @@ const updateTicketStatus = catchAsync(async (req, res) => {
   const userRole = ticketOwner?.role || 'client';
   const userLink = userRole === 'company' ? '/company/support' : '/client/support';
 
+  let notifTitle = `Ticket ${status ? `mis à jour (${status})` : 'mis à jour'} 🎫`;
+  let notifMessage = `Le statut de votre demande de support "${ticket.subject}" est désormais: ${ticket.status}.`;
+  if (status === 'closed') {
+    notifTitle = 'Ticket clôturé & archivé 📦';
+    notifMessage = `Votre ticket "${ticket.subject}" a été fermé et archivé. Il sera définitivement supprimé dans 4 jours.`;
+  }
+
   await createNotification({
     recipientId: ticket.user,
-    title: `Ticket ${status ? `mis à jour (${status})` : 'mis à jour'} 🎫`,
-    message: `Le statut de votre demande de support "${ticket.subject}" est désormais: ${ticket.status}.`,
+    title: notifTitle,
+    message: notifMessage,
     type: 'system',
     entityType: 'user',
     entityId: ticket._id,
@@ -305,7 +377,71 @@ const updateTicketStatus = catchAsync(async (req, res) => {
     io,
   });
 
-  return success(res, { ticket }, 'Ticket mis à jour avec succès');
+  return success(res, { ticket }, status === 'closed' ? 'Ticket fermé et archivé (suppression dans 4 jours)' : 'Ticket mis à jour avec succès');
+});
+
+/**
+ * PATCH /api/v1/support/:id/close
+ * Owner or Admin closes and archives a ticket, scheduling permanent deletion in 4 days
+ */
+const closeTicket = catchAsync(async (req, res) => {
+  const ticket = await SupportTicket.findById(req.params.id);
+  if (!ticket) {
+    return notFound(res, 'Ticket introuvable');
+  }
+
+  const isAdmin = req.user.role === 'admin';
+  const isOwner = ticket.user.toString() === req.user._id.toString();
+
+  if (!isAdmin && !isOwner) {
+    return forbidden(res, 'Vous ne disposez pas des autorisations nécessaires pour fermer ce ticket.');
+  }
+
+  ticket.status = 'closed';
+  ticket.isArchived = true;
+  ticket.closedAt = new Date();
+  ticket.archivedAt = new Date();
+  ticket.autoDeleteAt = new Date(Date.now() + 4 * 24 * 60 * 60 * 1000); // 4 days
+
+  await ticket.save();
+
+  const io = req.app.get('io');
+  if (isOwner) {
+    const admins = await User.find({ role: 'admin' }).select('_id');
+    for (const admin of admins) {
+      await createNotification({
+        recipientId: admin._id,
+        title: "Ticket fermé par l'utilisateur 📦",
+        message: `${req.user.firstName} (${req.user.role === 'company' ? 'Déménageur' : 'Client'}) a fermé le ticket "${ticket.subject}". Archivé (suppression sous 4 jours).`,
+        type: 'system',
+        entityType: 'user',
+        entityId: ticket._id,
+        link: `/admin/support?tab=${ticket.category === 'dispute' ? 'disputes' : 'tickets'}`,
+        io,
+      });
+    }
+  } else {
+    const ticketOwner = await User.findById(ticket.user).select('role firstName lastName email');
+    const userRole = ticketOwner?.role || 'client';
+    const userLink = userRole === 'company' ? '/company/support' : '/client/support';
+
+    await createNotification({
+      recipientId: ticket.user,
+      title: 'Ticket clôturé & archivé 📦',
+      message: `Votre ticket "${ticket.subject}" a été fermé et archivé. Il sera définitivement supprimé dans 4 jours.`,
+      type: 'system',
+      entityType: 'user',
+      entityId: ticket._id,
+      link: userLink,
+      io,
+    });
+  }
+
+  return success(
+    res,
+    { ticket },
+    'Ticket clôturé et archivé avec succès. Suppression définitive automatique dans 4 jours.'
+  );
 });
 
 module.exports = {
@@ -315,4 +451,6 @@ module.exports = {
   addMessage,
   getAllTickets,
   updateTicketStatus,
+  closeTicket,
+  cleanupExpiredTickets,
 };

@@ -15,6 +15,7 @@ router.post('/', protect, ctrl('createTicket'));
 router.get('/my', protect, ctrl('getMyTickets'));
 router.get('/:id', protect, ctrl('getTicketById'));
 router.post('/:id/messages', protect, ctrl('addMessage'));
+router.patch('/:id/close', protect, ctrl('closeTicket'));
 
 // Admin
 router.get('/', protect, authorize('admin'), ctrl('getAllTickets'));
