@@ -24,6 +24,11 @@ const register = catchAsync(async (req, res) => {
   const firstName = req.body.firstName || req.body.managerFirstName;
   const lastName = req.body.lastName || req.body.managerLastName;
 
+  // Validate password length
+  if (!password || password.length < 8) {
+    return badRequest(res, 'Le mot de passe doit comporter au moins 8 caractères.');
+  }
+
   // Check email uniqueness
   const existingUser = await User.findOne({ email: email.toLowerCase() });
   if (existingUser) {

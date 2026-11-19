@@ -25,6 +25,9 @@ import {
   MapPin,
   Navigation,
   ExternalLink,
+  Eye,
+  EyeOff,
+  Check,
 } from "lucide-react";
 
 export function RegisterCompanyPage() {
@@ -62,6 +65,20 @@ export function RegisterCompanyPage() {
   const [loadingInitial, setLoadingInitial] = useState(isRectifyMode);
   const [rectificationNotes, setRectificationNotes] = useState("");
   const [resubmitSuccess, setResubmitSuccess] = useState(false);
+
+  // Password visibility & validation states
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
+  const getPasswordStrength = (pass) => {
+    if (!pass) return 0;
+    let score = 0;
+    if (pass.length >= 8) score += 1;
+    if (pass.length >= 10) score += 1;
+    if (/[0-9]/.test(pass)) score += 1;
+    if (/[A-Z]/.test(pass) || /[^A-Za-z0-9]/.test(pass)) score += 1;
+    return score;
+  };
 
   const handleGovernorateChange = (gov) => {
     const coords = getCoordinatesForGovernorate(gov);
@@ -670,37 +687,141 @@ export function RegisterCompanyPage() {
           )}
         </div>
 
-        {/* Mot de passe - Uniquement en création */}
+        {/* Mot de passe et confirmation avec validation 8 caractères - Uniquement en création */}
         {!isRectifyMode && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">Mot de passe sécurisé *</label>
-              <div className="relative">
-                <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                <input
-                  type="password"
-                  required
-                  value={formData.password}
-                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                  placeholder="Minimum 8 caractères"
-                  className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#800020]/20 focus:border-[#800020] bg-white transition-all"
-                />
+          <div className="space-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {/* Champ Mot de passe */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-bold text-slate-700">Mot de passe sécurisé *</label>
+                  <span className="text-[10px] text-slate-400 font-medium">Min. 8 caractères</span>
+                </div>
+                <div className="relative">
+                  <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    required
+                    value={formData.password}
+                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                    placeholder="Minimum 8 caractères"
+                    className={`w-full pl-9 pr-10 py-2.5 rounded-xl border text-sm focus:outline-none focus:ring-2 bg-white transition-all ${
+                      formData.password.length > 0 && formData.password.length < 8
+                        ? "border-amber-400 bg-amber-50/10 focus:ring-amber-200 focus:border-amber-500"
+                        : formData.password.length >= 8
+                        ? "border-emerald-400 bg-emerald-50/10 focus:ring-emerald-200 focus:border-emerald-500"
+                        : "border-slate-200 focus:ring-[#800020]/20 focus:border-[#800020]"
+                    }`}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 p-0.5 rounded-md transition-colors"
+                    title={showPassword ? "Masquer le mot de passe" : "Afficher le mot de passe"}
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+
+                {/* Alerte si moins de 8 caractères */}
+                {formData.password.length > 0 && formData.password.length < 8 && (
+                  <div className="mt-1.5 flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-[11px] font-semibold animate-in fade-in duration-200">
+                    <AlertCircle className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
+                    <span>Mot de passe trop court : {formData.password.length}/8 caractères minimum requis</span>
+                  </div>
+                )}
+
+                {/* Validation 8 caractères atteinte */}
+                {formData.password.length >= 8 && (
+                  <div className="mt-1.5 flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] font-semibold animate-in fade-in duration-200">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
+                    <span>Longueur valide (au moins 8 caractères)</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Champ Confirmer mot de passe */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-bold text-slate-700">Confirmer mot de passe *</label>
+                  <span className="text-[10px] text-slate-400 font-medium">Doit être identique</span>
+                </div>
+                <div className="relative">
+                  <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <input
+                    type={showConfirmPassword ? "text" : "password"}
+                    required
+                    value={formData.confirmPassword}
+                    onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
+                    placeholder="Confirmez le mot de passe"
+                    className={`w-full pl-9 pr-10 py-2.5 rounded-xl border text-sm focus:outline-none focus:ring-2 bg-white transition-all ${
+                      formData.confirmPassword.length > 0 && formData.password !== formData.confirmPassword
+                        ? "border-rose-400 bg-rose-50/10 focus:ring-rose-200 focus:border-rose-500"
+                        : formData.confirmPassword.length > 0 && formData.password === formData.confirmPassword && formData.password.length >= 8
+                        ? "border-emerald-400 bg-emerald-50/10 focus:ring-emerald-200 focus:border-emerald-500"
+                        : "border-slate-200 focus:ring-[#800020]/20 focus:border-[#800020]"
+                    }`}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 p-0.5 rounded-md transition-colors"
+                    title={showConfirmPassword ? "Masquer le mot de passe" : "Afficher le mot de passe"}
+                  >
+                    {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+
+                {/* Alerte si les mots de passe ne correspondent pas */}
+                {formData.confirmPassword.length > 0 && formData.password !== formData.confirmPassword && (
+                  <div className="mt-1.5 flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-rose-50 border border-rose-200 text-rose-800 text-[11px] font-semibold animate-in fade-in duration-200">
+                    <AlertCircle className="w-3.5 h-3.5 text-rose-600 flex-shrink-0" />
+                    <span>Les mots de passe ne correspondent pas</span>
+                  </div>
+                )}
+
+                {/* Confirmation valide */}
+                {formData.confirmPassword.length > 0 && formData.password === formData.confirmPassword && formData.password.length >= 8 && (
+                  <div className="mt-1.5 flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] font-semibold animate-in fade-in duration-200">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
+                    <span>Mots de passe identiques</span>
+                  </div>
+                )}
               </div>
             </div>
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">Confirmer mot de passe *</label>
-              <div className="relative">
-                <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                <input
-                  type="password"
-                  required
-                  value={formData.confirmPassword}
-                  onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
-                  placeholder="Confirmez le mot de passe"
-                  className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#800020]/20 focus:border-[#800020] bg-white transition-all"
-                />
-              </div>
-            </div>
+
+            {/* Jauge visuelle de robustesse du mot de passe */}
+            {formData.password.length > 0 && (() => {
+              const strength = getPasswordStrength(formData.password);
+              return (
+                <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 space-y-1.5">
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="text-slate-600 font-medium flex items-center gap-1">
+                      <span>Robustesse :</span>
+                      <strong className={
+                        strength <= 1 ? "text-amber-700 font-bold" :
+                        strength === 2 ? "text-blue-700 font-bold" :
+                        strength === 3 ? "text-emerald-700 font-bold" :
+                        "text-[#800020] font-bold"
+                      }>
+                        {strength <= 1 ? "Faible (minimum 8 caractères)" :
+                         strength === 2 ? "Moyen" :
+                         strength === 3 ? "Bon" : "Très robuste"}
+                      </strong>
+                    </span>
+                    <span className="text-[10px] text-slate-500 font-mono">
+                      {formData.password.length} car. {formData.password.length < 8 ? "(Manque " + (8 - formData.password.length) + ")" : "✓"}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-4 gap-1.5 h-1.5">
+                    <div className={`rounded-full transition-all ${strength >= 1 ? (strength <= 1 ? 'bg-amber-500' : 'bg-emerald-500') : 'bg-slate-200'}`} />
+                    <div className={`rounded-full transition-all ${strength >= 2 ? 'bg-blue-500' : 'bg-slate-200'}`} />
+                    <div className={`rounded-full transition-all ${strength >= 3 ? 'bg-emerald-500' : 'bg-slate-200'}`} />
+                    <div className={`rounded-full transition-all ${strength >= 4 ? 'bg-[#800020]' : 'bg-slate-200'}`} />
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         )}
 

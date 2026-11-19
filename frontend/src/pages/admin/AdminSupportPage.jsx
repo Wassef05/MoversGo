@@ -41,6 +41,9 @@ import {
   Paperclip,
   Archive,
   Lock,
+  Truck,
+  CheckCheck,
+  Users,
 } from "lucide-react";
 
 const FAQ_DATA = [
@@ -182,7 +185,17 @@ export function AdminSupportPage() {
         : Array.isArray(res?.messages)
         ? res.messages
         : [];
-      setChatMessages(list);
+      // Deduplicate messages by ID
+      const seen = new Set();
+      const uniqueList = [];
+      for (const m of list) {
+        const id = String(m._id || m.id || "");
+        if (!id || !seen.has(id)) {
+          if (id) seen.add(id);
+          uniqueList.push(m);
+        }
+      }
+      setChatMessages(uniqueList);
       setTimeout(scrollToBottom, 60);
     } catch (err) {
       console.error("Erreur chargement messages:", err);
@@ -209,7 +222,13 @@ export function AdminSupportPage() {
       const newMsg = res?.data?.message || res?.message || res?.data;
 
       if (newMsg) {
-        setChatMessages((prev) => [...prev, newMsg]);
+        setChatMessages((prev) => {
+          const newId = String(newMsg._id || newMsg.id || "");
+          if (newId && prev.some((m) => String(m._id || m.id || "") === newId)) {
+            return prev;
+          }
+          return [...prev, newMsg];
+        });
         setConversations((prev) =>
           prev.map((c) =>
             ((c._id || c.id) === convId
@@ -226,20 +245,29 @@ export function AdminSupportPage() {
     }
   };
 
+  const fetchAllUsers = async () => {
+    if (allUsersList.length > 0) return;
+    setUsersLoading(true);
+    try {
+      const res = await adminService.getAllUsers({ limit: 250 });
+      const list = Array.isArray(res?.data)
+        ? res.data
+        : Array.isArray(res?.users)
+        ? res.users
+        : Array.isArray(res)
+        ? res
+        : [];
+      setAllUsersList(list);
+    } catch (err) {
+      console.warn("Impossible de charger l'annuaire des utilisateurs:", err);
+    } finally {
+      setUsersLoading(false);
+    }
+  };
+
   const handleOpenUserPicker = async () => {
     setIsUserPickerOpen(true);
-    if (allUsersList.length === 0) {
-      setUsersLoading(true);
-      try {
-        const res = await adminService.getAllUsers({ limit: 100 });
-        const list = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [];
-        setAllUsersList(list);
-      } catch (err) {
-        toast.error("Impossible de charger les utilisateurs.");
-      } finally {
-        setUsersLoading(false);
-      }
-    }
+    await fetchAllUsers();
   };
 
   const handleStartChatWithUser = async (targetUser) => {
@@ -255,11 +283,53 @@ export function AdminSupportPage() {
         setActiveConversation(conv);
         setIsUserPickerOpen(false);
         fetchMessagesForConversation(conv._id || conv.id);
-        toast.success(`Discussion ouverte avec ${targetUser.firstName} ${targetUser.lastName}`);
+        const targetName = targetUser.company?.companyName || `${targetUser.firstName || ""} ${targetUser.lastName || ""}`.trim();
+        toast.success(`Discussion ouverte avec ${targetName}`);
       }
     } catch (err) {
       toast.error(err?.message || "Erreur lors de la création de la discussion.");
     }
+  };
+
+  const getConversationMeta = (conv) => {
+    if (!conv || !Array.isArray(conv.participants)) {
+      return {
+        title: "Discussion",
+        subtitle: "",
+        client: null,
+        company: null,
+        admin: null,
+        isClientCompany: false,
+      };
+    }
+
+    const client = conv.participants.find((p) => p.role === "client");
+    const company = conv.participants.find((p) => p.role === "company");
+    const admin = conv.participants.find((p) => p.role === "admin");
+    const isClientCompany = Boolean(client && company);
+
+    let title = "Discussion";
+    let subtitle = "";
+
+    if (isClientCompany) {
+      const clientName = client ? `${client.firstName || ""} ${client.lastName || ""}`.trim() : "Client";
+      const compName = company
+        ? (company.company?.companyName || `${company.firstName || ""} ${company.lastName || ""}`.trim())
+        : "Déménageur";
+      title = `${clientName} ↔ ${compName}`;
+      subtitle = `Échange Client / Déménageur`;
+    } else {
+      const other = conv.participants.find(
+        (p) => String(p._id || p.id) !== String(currentUser?._id || currentUser?.id)
+      ) || conv.participants[0];
+      const otherName = other?.role === "company"
+        ? (other.company?.companyName || `${other.firstName || ""} ${other.lastName || ""}`.trim())
+        : `${other?.firstName || ""} ${other?.lastName || ""}`.trim();
+      title = otherName || "Utilisateur";
+      subtitle = other?.role === "company" ? "Déménageur Partenaire" : "Client Particulier";
+    }
+
+    return { title, subtitle, client, company, admin, isClientCompany };
   };
 
   const getOtherParticipant = (conv) => {
@@ -272,12 +342,17 @@ export function AdminSupportPage() {
   useEffect(() => {
     if (activeTab === "live_chat") {
       fetchConversations();
+      fetchAllUsers();
       const socket = initSocket();
 
       const handleNewMessage = (msg) => {
-        if (activeConversation && String(msg.conversation) === String(activeConversation._id || activeConversation.id)) {
+        if (!msg) return;
+        const msgConvId = String(msg.conversation?._id || msg.conversation?.id || msg.conversation || "");
+        const currentConvId = String(activeConversation?._id || activeConversation?.id || "");
+        if (currentConvId && msgConvId === currentConvId) {
           setChatMessages((prev) => {
-            if (prev.some((m) => (m._id || m.id) === (msg._id || msg.id))) return prev;
+            const newId = String(msg._id || msg.id || "");
+            if (newId && prev.some((m) => String(m._id || m.id || "") === newId)) return prev;
             return [...prev, msg];
           });
           setTimeout(scrollToBottom, 50);
@@ -535,19 +610,42 @@ export function AdminSupportPage() {
     return true;
   });
 
-  // Filtered Live Chat Conversations
+  // Filtered Live Chat Conversations (For "Tous les échanges")
   const filteredConversations = conversations.filter((conv) => {
-    const other = getOtherParticipant(conv);
-    if (!other) return false;
-    if (chatRoleFilter !== "all" && other.role !== chatRoleFilter) return false;
-    if (chatSearchQuery.trim()) {
-      const q = chatSearchQuery.toLowerCase();
-      const name = `${other.firstName || ""} ${other.lastName || ""}`.toLowerCase();
-      const email = (other.email || "").toLowerCase();
-      const last = (conv.lastMessage?.content || "").toLowerCase();
-      return name.includes(q) || email.includes(q) || last.includes(q);
-    }
-    return true;
+    if (!chatSearchQuery.trim()) return true;
+    const q = chatSearchQuery.toLowerCase();
+    const meta = getConversationMeta(conv);
+    const pNames = (conv.participants || [])
+      .map((p) => `${p.firstName || ""} ${p.lastName || ""} ${p.company?.companyName || ""} ${p.email || ""}`)
+      .join(" ")
+      .toLowerCase();
+    const last = (conv.lastMessage?.content || "").toLowerCase();
+    return pNames.includes(q) || last.includes(q) || meta.title.toLowerCase().includes(q);
+  });
+
+  // Client Users Directory (For "Clients")
+  const clientUsers = allUsersList.filter((u) => u.role === "client");
+  const filteredClients = clientUsers.filter((u) => {
+    if (!chatSearchQuery.trim()) return true;
+    const q = chatSearchQuery.toLowerCase();
+    const name = `${u.firstName || ""} ${u.lastName || ""}`.toLowerCase();
+    const email = (u.email || "").toLowerCase();
+    const phone = (u.phone || "").toLowerCase();
+    const city = (u.city || "").toLowerCase();
+    return name.includes(q) || email.includes(q) || phone.includes(q) || city.includes(q);
+  });
+
+  // Company / Mover Users Directory (For "Déménageurs")
+  const companyUsers = allUsersList.filter((u) => u.role === "company");
+  const filteredCompanies = companyUsers.filter((u) => {
+    if (!chatSearchQuery.trim()) return true;
+    const q = chatSearchQuery.toLowerCase();
+    const compName = (u.company?.companyName || "").toLowerCase();
+    const name = `${u.firstName || ""} ${u.lastName || ""}`.toLowerCase();
+    const email = (u.email || "").toLowerCase();
+    const phone = (u.phone || "").toLowerCase();
+    const city = (u.city || u.company?.city || "").toLowerCase();
+    return compName.includes(q) || name.includes(q) || email.includes(q) || phone.includes(q) || city.includes(q);
   });
 
   // Filtered Users for Picker Modal
@@ -1332,173 +1430,388 @@ export function AdminSupportPage() {
           </div>
 
           {/* Main Chat Workspace */}
-          <div className="grid grid-cols-1 md:grid-cols-12 h-[680px]">
-            {/* Left Column: Conversations List */}
-            <div className="md:col-span-4 lg:col-span-4 border-r border-slate-100 flex flex-col h-full bg-slate-50/40">
-              {/* Search & Filter */}
+          <div className="grid grid-cols-1 md:grid-cols-12 h-[720px]">
+            {/* Left Column: Conversations or Directory List */}
+            <div className="md:col-span-5 lg:col-span-4 border-r border-slate-100 flex flex-col h-full bg-slate-50/40">
+              {/* Search & Filter Header */}
               <div className="p-3 border-b border-slate-100 space-y-2 bg-white">
                 <div className="relative">
                   <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                   <input
                     type="text"
-                    placeholder="Filtrer les discussions..."
+                    placeholder={
+                      chatRoleFilter === "all"
+                        ? "Filtrer les conversations (client, société, message)..."
+                        : chatRoleFilter === "client"
+                        ? "Rechercher un client (nom, email, tel)..."
+                        : "Rechercher un déménageur (société, contact, ville)..."
+                    }
                     value={chatSearchQuery}
                     onChange={(e) => setChatSearchQuery(e.target.value)}
-                    className="w-full pl-8 pr-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-[#800020]/20"
+                    className="w-full pl-8 pr-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-[#800020]/20"
                   />
                 </div>
                 <div className="flex items-center gap-1">
                   {[
-                    { id: "all", label: "Tous" },
-                    { id: "client", label: "Clients" },
-                    { id: "company", label: "Déménageurs" },
+                    { id: "all", label: "Tous", count: filteredConversations.length },
+                    { id: "client", label: "Clients", count: filteredClients.length },
+                    { id: "company", label: "Déménageurs", count: filteredCompanies.length },
                   ].map((f) => (
                     <button
                       key={f.id}
                       onClick={() => setChatRoleFilter(f.id)}
-                      className={`flex-1 py-1 rounded-lg text-[10px] font-bold transition-colors ${
+                      className={`flex-1 py-1.5 px-2 rounded-lg text-[10px] font-bold transition-all flex items-center justify-center gap-1 cursor-pointer ${
                         chatRoleFilter === f.id
-                          ? "bg-slate-900 text-white"
+                          ? "bg-slate-900 text-white shadow-xs"
                           : "bg-slate-100 text-slate-600 hover:bg-slate-200"
                       }`}
                     >
-                      {f.label}
+                      <span>{f.label}</span>
+                      <span
+                        className={`px-1.5 py-0.2 rounded-full text-[9px] ${
+                          chatRoleFilter === f.id ? "bg-white/20 text-white" : "bg-slate-200 text-slate-700"
+                        }`}
+                      >
+                        {f.count}
+                      </span>
                     </button>
                   ))}
                 </div>
               </div>
 
-              {/* Conversations Scroll Area */}
+              {/* Scrollable List based on chatRoleFilter */}
               <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
-                {conversationsLoading && conversations.length === 0 ? (
-                  <div className="p-8 text-center text-slate-400">
-                    <Loader2 className="w-5 h-5 animate-spin mx-auto mb-2 text-[#800020]" />
-                    <span className="text-xs">Chargement des fils...</span>
-                  </div>
-                ) : filteredConversations.length === 0 ? (
-                  <div className="p-8 text-center text-slate-400 space-y-3">
-                    <MessageSquare className="w-8 h-8 mx-auto text-slate-300" />
-                    <p className="text-xs">Aucune discussion trouvée.</p>
-                    <button
-                      onClick={handleOpenUserPicker}
-                      className="text-xs font-bold text-[#800020] hover:underline"
-                    >
-                      Démarrer un chat avec un utilisateur →
-                    </button>
-                  </div>
-                ) : (
-                  filteredConversations.map((conv) => {
-                    const cId = conv._id || conv.id;
-                    const other = getOtherParticipant(conv);
-                    const isSelected = activeConversation && (activeConversation._id || activeConversation.id) === cId;
-                    const name = other ? `${other.firstName || ""} ${other.lastName || ""}`.trim() || other.company?.companyName || "Utilisateur" : "Utilisateur";
-                    const isCompany = other?.role === "company";
-                    const lastMsg = conv.lastMessage?.content || "Aucun message";
-
-                    return (
-                      <div
-                        key={cId}
-                        onClick={() => handleSelectConversation(conv)}
-                        className={`p-3.5 cursor-pointer transition-all flex items-start gap-3 ${
-                          isSelected
-                            ? "bg-rose-50/90 border-l-4 border-l-[#800020]"
-                            : "hover:bg-slate-100/70"
-                        }`}
+                {/* 1. STATE "TOUS": ALL CONVERSATIONS */}
+                {chatRoleFilter === "all" && (
+                  conversationsLoading && conversations.length === 0 ? (
+                    <div className="p-8 text-center text-slate-400">
+                      <Loader2 className="w-5 h-5 animate-spin mx-auto mb-2 text-[#800020]" />
+                      <span className="text-xs">Chargement des conversations...</span>
+                    </div>
+                  ) : filteredConversations.length === 0 ? (
+                    <div className="p-8 text-center text-slate-400 space-y-3">
+                      <MessageSquare className="w-8 h-8 mx-auto text-slate-300" />
+                      <p className="text-xs">Aucune conversation trouvée.</p>
+                      <button
+                        onClick={handleOpenUserPicker}
+                        className="text-xs font-bold text-[#800020] hover:underline"
                       >
-                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-white font-bold text-xs flex-shrink-0 ${
-                          isCompany ? "bg-amber-600" : "bg-[#800020]"
-                        }`}>
-                          {name.charAt(0).toUpperCase()}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between gap-1 mb-0.5">
-                            <span className="font-bold text-xs text-slate-900 truncate">
-                              {name}
-                            </span>
-                            <span className="text-[10px] text-slate-400 whitespace-nowrap">
-                              {conv.lastMessageAt ? formatDate(conv.lastMessageAt) : ""}
-                            </span>
+                        Démarrer une nouvelle discussion →
+                      </button>
+                    </div>
+                  ) : (
+                    filteredConversations.map((conv) => {
+                      const cId = conv._id || conv.id;
+                      const meta = getConversationMeta(conv);
+                      const isSelected = activeConversation && (activeConversation._id || activeConversation.id) === cId;
+                      const lastMsg = conv.lastMessage?.content || "Aucun message";
+
+                      return (
+                        <div
+                          key={cId}
+                          onClick={() => handleSelectConversation(conv)}
+                          className={`p-3.5 cursor-pointer transition-all flex items-start gap-3 ${
+                            isSelected
+                              ? "bg-rose-50/90 border-l-4 border-l-[#800020]"
+                              : "hover:bg-slate-100/70"
+                          }`}
+                        >
+                          <div
+                            className={`w-10 h-10 rounded-2xl flex items-center justify-center text-white font-bold text-xs flex-shrink-0 shadow-2xs ${
+                              meta.isClientCompany
+                                ? "bg-gradient-to-br from-sky-600 to-emerald-600"
+                                : meta.company
+                                ? "bg-emerald-600"
+                                : "bg-sky-600"
+                            }`}
+                          >
+                            {meta.isClientCompany ? "👥" : meta.company ? "🚚" : "👤"}
                           </div>
-                          <div className="flex items-center gap-1.5 mb-1">
-                            <span className={`px-1.5 py-0.2 rounded text-[9px] font-bold ${
-                              isCompany ? "bg-amber-100 text-amber-800" : "bg-rose-100 text-[#800020]"
-                            }`}>
-                              {isCompany ? "Déménageur" : "Client"}
-                            </span>
-                            {conv.booking && (
-                              <span className="text-[9px] text-slate-400 font-mono">
-                                Réf #{String(conv.booking._id || conv.booking).slice(-4)}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between gap-1 mb-0.5">
+                              <span className="font-bold text-xs text-slate-900 truncate">
+                                {meta.title}
                               </span>
-                            )}
+                              <span className="text-[10px] text-slate-400 whitespace-nowrap">
+                                {conv.lastMessageAt ? formatDate(conv.lastMessageAt) : ""}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1.5 mb-1 flex-wrap">
+                              <span
+                                className={`px-1.5 py-0.2 rounded text-[9px] font-bold ${
+                                  meta.isClientCompany
+                                    ? "bg-purple-100 text-purple-800 border border-purple-200"
+                                    : meta.company
+                                    ? "bg-emerald-100 text-emerald-800"
+                                    : "bg-sky-100 text-sky-800"
+                                }`}
+                              >
+                                {meta.subtitle}
+                              </span>
+                              {meta.admin && (
+                                <span className="px-1.5 py-0.2 rounded text-[9px] font-black bg-rose-50 text-[#800020] border border-rose-200 flex items-center gap-0.5">
+                                  <ShieldCheck className="w-2.5 h-2.5 text-[#800020]" /> Modéré
+                                </span>
+                              )}
+                              {conv.booking && (
+                                <span className="text-[9px] text-slate-400 font-mono">
+                                  #{String(conv.booking._id || conv.booking).slice(-4)}
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[11px] text-slate-500 truncate">
+                              {lastMsg}
+                            </p>
                           </div>
-                          <p className="text-[11px] text-slate-500 truncate">
-                            {lastMsg}
-                          </p>
                         </div>
-                      </div>
-                    );
-                  })
+                      );
+                    })
+                  )
+                )}
+
+                {/* 2. STATE "CLIENT": ALL CLIENT USERS DIRECTORY */}
+                {chatRoleFilter === "client" && (
+                  usersLoading && allUsersList.length === 0 ? (
+                    <div className="p-8 text-center text-slate-400">
+                      <Loader2 className="w-5 h-5 animate-spin mx-auto mb-2 text-[#800020]" />
+                      <span className="text-xs">Chargement des clients...</span>
+                    </div>
+                  ) : filteredClients.length === 0 ? (
+                    <div className="p-8 text-center text-slate-400 space-y-2">
+                      <User className="w-8 h-8 mx-auto text-slate-300" />
+                      <p className="text-xs">Aucun client correspondant trouvé.</p>
+                    </div>
+                  ) : (
+                    filteredClients.map((client) => {
+                      const cId = client._id || client.id;
+                      const existingConv = conversations.find((c) =>
+                        c.participants?.some((p) => String(p._id || p.id) === String(cId))
+                      );
+                      const isSelected =
+                        activeConversation &&
+                        activeConversation.participants?.some((p) => String(p._id || p.id) === String(cId));
+                      const clientName =
+                        `${client.firstName || ""} ${client.lastName || ""}`.trim() || "Client";
+
+                      return (
+                        <div
+                          key={cId}
+                          onClick={() => handleStartChatWithUser(client)}
+                          className={`p-3.5 cursor-pointer transition-all flex items-start gap-3 ${
+                            isSelected
+                              ? "bg-rose-50/90 border-l-4 border-l-[#800020]"
+                              : "hover:bg-slate-100/70"
+                          }`}
+                        >
+                          <div className="w-10 h-10 rounded-2xl bg-sky-600 text-white flex items-center justify-center font-bold text-xs flex-shrink-0 shadow-2xs">
+                            {clientName.charAt(0).toUpperCase()}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between gap-1 mb-0.5">
+                              <span className="font-bold text-xs text-slate-900 truncate">
+                                {clientName}
+                              </span>
+                              {existingConv?.lastMessageAt && (
+                                <span className="text-[10px] text-slate-400 whitespace-nowrap">
+                                  {formatDate(existingConv.lastMessageAt)}
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[10px] text-slate-400 truncate mb-1">
+                              {client.email} {client.phone ? `• ${client.phone}` : ""}
+                            </p>
+                            <div className="flex items-center justify-between gap-1">
+                              {existingConv ? (
+                                <span className="text-[10px] text-slate-600 truncate max-w-[170px] italic">
+                                  {existingConv.lastMessage?.content || "Discussion ouverte"}
+                                </span>
+                              ) : (
+                                <span className="text-[10px] text-emerald-600 font-semibold flex items-center gap-1">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                                  Prêt à contacter
+                                </span>
+                              )}
+                              <span className="px-2 py-0.5 rounded-lg bg-slate-900 text-white text-[10px] font-bold hover:bg-[#800020] transition-colors">
+                                {existingConv ? "Ouvrir" : "Contacter"}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )
+                )}
+
+                {/* 3. STATE "COMPANY": ALL DÉMÉNAGEURS / TRANSPORTEURS DIRECTORY */}
+                {chatRoleFilter === "company" && (
+                  usersLoading && allUsersList.length === 0 ? (
+                    <div className="p-8 text-center text-slate-400">
+                      <Loader2 className="w-5 h-5 animate-spin mx-auto mb-2 text-[#800020]" />
+                      <span className="text-xs">Chargement des déménageurs...</span>
+                    </div>
+                  ) : filteredCompanies.length === 0 ? (
+                    <div className="p-8 text-center text-slate-400 space-y-2">
+                      <Truck className="w-8 h-8 mx-auto text-slate-300" />
+                      <p className="text-xs">Aucun déménageur correspondant trouvé.</p>
+                    </div>
+                  ) : (
+                    filteredCompanies.map((company) => {
+                      const cId = company._id || company.id;
+                      const existingConv = conversations.find((c) =>
+                        c.participants?.some((p) => String(p._id || p.id) === String(cId))
+                      );
+                      const isSelected =
+                        activeConversation &&
+                        activeConversation.participants?.some((p) => String(p._id || p.id) === String(cId));
+                      const compName =
+                        company.company?.companyName ||
+                        `${company.firstName || ""} ${company.lastName || ""}`.trim() ||
+                        "Déménageur";
+
+                      return (
+                        <div
+                          key={cId}
+                          onClick={() => handleStartChatWithUser(company)}
+                          className={`p-3.5 cursor-pointer transition-all flex items-start gap-3 ${
+                            isSelected
+                              ? "bg-rose-50/90 border-l-4 border-l-[#800020]"
+                              : "hover:bg-slate-100/70"
+                          }`}
+                        >
+                          <div className="w-10 h-10 rounded-2xl bg-emerald-600 text-white flex items-center justify-center font-bold text-xs flex-shrink-0 shadow-2xs">
+                            <Truck className="w-5 h-5 text-white" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between gap-1 mb-0.5">
+                              <span className="font-bold text-xs text-slate-900 truncate">
+                                {compName}
+                              </span>
+                              {existingConv?.lastMessageAt && (
+                                <span className="text-[10px] text-slate-400 whitespace-nowrap">
+                                  {formatDate(existingConv.lastMessageAt)}
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[10px] text-slate-400 truncate mb-1">
+                              {company.email} {company.phone ? `• ${company.phone}` : ""}
+                            </p>
+                            <div className="flex items-center justify-between gap-1">
+                              {existingConv ? (
+                                <span className="text-[10px] text-slate-600 truncate max-w-[170px] italic">
+                                  {existingConv.lastMessage?.content || "Discussion ouverte"}
+                                </span>
+                              ) : (
+                                <span className="text-[10px] text-amber-700 font-semibold flex items-center gap-1">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                                  Partenaire agréé
+                                </span>
+                              )}
+                              <span className="px-2 py-0.5 rounded-lg bg-slate-900 text-white text-[10px] font-bold hover:bg-[#800020] transition-colors">
+                                {existingConv ? "Ouvrir" : "Contacter"}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )
                 )}
               </div>
             </div>
 
             {/* Right Column: Live Chat Window */}
-            <div className="md:col-span-8 lg:col-span-8 flex flex-col h-full bg-white">
+            <div className="md:col-span-7 lg:col-span-8 flex flex-col h-full bg-white">
               {activeConversation ? (
                 <>
-                  {/* Chat Header */}
+                  {/* Chat Header (Supervision Aware) */}
                   {(() => {
-                    const other = getOtherParticipant(activeConversation);
-                    const name = other ? `${other.firstName || ""} ${other.lastName || ""}`.trim() || other.company?.companyName || "Utilisateur" : "Utilisateur";
-                    const isCompany = other?.role === "company";
+                    const meta = getConversationMeta(activeConversation);
 
                     return (
-                      <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-white">
-                        <div className="flex items-center gap-3">
-                          <div className={`w-10 h-10 rounded-2xl flex items-center justify-center text-white font-bold text-sm ${
-                            isCompany ? "bg-amber-600" : "bg-[#800020]"
-                          }`}>
-                            {name.charAt(0).toUpperCase()}
-                          </div>
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <h4 className="font-bold text-sm text-slate-900">{name}</h4>
-                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                                isCompany ? "bg-amber-100 text-amber-800" : "bg-rose-100 text-[#800020]"
-                              }`}>
-                                {isCompany ? "🚚 Déménageur Agréé" : "👤 Client Particulier"}
-                              </span>
+                      <div className="p-4 border-b border-slate-100 bg-white space-y-2">
+                        <div className="flex items-center justify-between">
+                          {meta.isClientCompany ? (
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-sky-600 to-emerald-600 text-white flex items-center justify-center text-base shadow-sm flex-shrink-0">
+                                👥
+                              </div>
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-100 text-sky-800 border border-sky-200">
+                                    👤 {meta.client?.firstName} {meta.client?.lastName}
+                                  </span>
+                                  <span className="text-slate-400 text-xs">↔</span>
+                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                    🚚 {meta.company?.company?.companyName || meta.company?.firstName}
+                                  </span>
+                                </div>
+                                <p className="text-[11px] text-slate-400 mt-0.5">
+                                  Échange Client / Déménageur • Supervision administrative MoversGo active
+                                </p>
+                              </div>
                             </div>
-                            <p className="text-[11px] text-slate-400">
-                              {other?.email} {other?.phone ? `• ${other?.phone}` : ""}
-                            </p>
+                          ) : (
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div
+                                className={`w-10 h-10 rounded-2xl flex items-center justify-center text-white font-bold text-sm flex-shrink-0 ${
+                                  meta.company ? "bg-emerald-600" : "bg-sky-600"
+                                }`}
+                              >
+                                {meta.title.charAt(0).toUpperCase()}
+                              </div>
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <h4 className="font-bold text-sm text-slate-900 truncate">
+                                    {meta.title}
+                                  </h4>
+                                  <span
+                                    className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                      meta.company
+                                        ? "bg-emerald-100 text-emerald-800"
+                                        : "bg-sky-100 text-sky-800"
+                                    }`}
+                                  >
+                                    {meta.company ? "🚚 Déménageur Partenaire" : "👤 Client Particulier"}
+                                  </span>
+                                </div>
+                                <p className="text-[11px] text-slate-400">
+                                  {meta.subtitle}
+                                </p>
+                              </div>
+                            </div>
+                          )}
+
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() =>
+                                fetchMessagesForConversation(
+                                  activeConversation._id || activeConversation.id
+                                )
+                              }
+                              className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 transition-colors cursor-pointer"
+                              title="Actualiser les messages"
+                            >
+                              <RefreshCw className="w-4 h-4" />
+                            </button>
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-2">
-                          {other?.phone && (
-                            <a
-                              href={`tel:${other.phone}`}
-                              className="p-2 rounded-xl bg-slate-100 hover:bg-emerald-50 hover:text-emerald-700 text-slate-600 transition-colors"
-                              title="Appeler l'utilisateur"
-                            >
-                              <Phone className="w-4 h-4" />
-                            </a>
-                          )}
-                          <button
-                            onClick={() => fetchMessagesForConversation(activeConversation._id || activeConversation.id)}
-                            className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 transition-colors"
-                            title="Actualiser les messages"
-                          >
-                            <RefreshCw className="w-4 h-4" />
-                          </button>
+                        {/* Supervision Ribbon */}
+                        <div className="px-3 py-1.5 rounded-xl bg-rose-50 border border-rose-200/90 text-[#800020] flex items-center justify-between text-[11px]">
+                          <span className="flex items-center gap-1.5 font-bold">
+                            <ShieldCheck className="w-4 h-4 text-[#800020]" />
+                            <span>Supervision Administrative MoversGo</span>
+                          </span>
+                          <span className="text-[10px] text-slate-500 font-medium hidden sm:inline">
+                            Vos messages apparaissent avec l'insigne officiel et sont notifiés aux participants
+                          </span>
                         </div>
                       </div>
                     );
                   })()}
 
-                  {/* Messages Bubble Area */}
-                  <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50/50">
+                  {/* Messages Bubble Area with Role-Specific Shapes & Colors */}
+                  <div className="flex-1 overflow-y-auto p-4 space-y-3.5 bg-slate-50/50">
                     {chatLoading ? (
                       <div className="p-8 text-center text-slate-400">
                         <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2 text-[#800020]" />
@@ -1508,48 +1821,146 @@ export function AdminSupportPage() {
                       <div className="text-center py-12 text-slate-400 space-y-2">
                         <MessagesSquare className="w-10 h-10 mx-auto text-slate-300" />
                         <p className="text-xs">Aucun message échangé pour le moment.</p>
-                        <p className="text-[11px] text-slate-400">Écrivez le premier message ci-dessous pour lancer l'assistance.</p>
+                        <p className="text-[11px] text-slate-400">
+                          Écrivez le premier message ci-dessous pour lancer l'assistance officielle.
+                        </p>
                       </div>
                     ) : (
-                      chatMessages.map((msg, i) => {
+                      chatMessages
+                        .filter((msg, idx, arr) => {
+                          const id = String(msg._id || msg.id || "");
+                          if (!id) return true;
+                          return arr.findIndex((m) => String(m._id || m.id || "") === id) === idx;
+                        })
+                        .map((msg, i) => {
                         const mId = msg._id || msg.id || i;
-                        const isMe =
-                          String(msg.sender?._id || msg.sender?.id || msg.sender) ===
-                          String(currentUser?._id || currentUser?.id) ||
-                          msg.sender?.role === "admin";
+                        const sender = msg.sender || {};
+                        const senderRole = sender.role || (msg.isAdminMessage ? "admin" : "client");
+                        const isSenderAdmin =
+                          senderRole === "admin" ||
+                          msg.isAdminMessage === true ||
+                          String(sender._id || sender.id) === String(currentUser?._id || currentUser?.id);
+                        const isSenderCompany = senderRole === "company" && !isSenderAdmin;
+                        const isSenderClient = senderRole === "client" && !isSenderAdmin;
 
-                        return (
-                          <div
-                            key={mId}
-                            className={`flex flex-col ${isMe ? "items-end" : "items-start"}`}
-                          >
-                            <div className="flex items-center gap-1.5 mb-1 px-1">
-                              <span className="text-[10px] font-bold text-slate-600">
-                                {isMe ? "🛡️ Support MoversGo (Vous)" : `${msg.sender?.firstName || "Utilisateur"}`}
-                              </span>
-                              <span className="text-[9px] text-slate-400">
-                                {msg.createdAt ? new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ""}
-                              </span>
+                        const senderName =
+                          isSenderCompany
+                            ? sender.company?.companyName || `${sender.firstName || ""} ${sender.lastName || ""}`.trim() || "Déménageur"
+                            : `${sender.firstName || ""} ${sender.lastName || ""}`.trim() || "Utilisateur";
+
+                        const timeStr = msg.createdAt
+                          ? new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+                          : "";
+
+                        // ── CASE A: ADMIN MESSAGE (Forme et couleur de prestige MoversGo) ──
+                        if (isSenderAdmin) {
+                          return (
+                            <div key={mId} className="flex flex-col items-end my-3">
+                              <div className="flex items-center gap-1.5 mb-1 px-1">
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-rose-100 text-[#800020] border border-rose-300 text-[10px] font-black tracking-wide shadow-2xs">
+                                  <ShieldCheck className="w-3.5 h-3.5 text-[#800020]" />
+                                  <span>🛡️ Intervention Officielle — Admin MoversGo</span>
+                                </span>
+                                <span className="text-[10px] text-slate-400 font-mono">{timeStr}</span>
+                              </div>
+
+                              <div className="max-w-[85%] rounded-2xl rounded-tr-xs p-4 bg-gradient-to-br from-[#800020] via-[#73001c] to-[#4d0013] text-white shadow-lg border-2 border-rose-300/40 relative overflow-hidden">
+                                <div className="flex items-center justify-between gap-2 pb-2 mb-2 border-b border-white/20 text-[11px]">
+                                  <div className="flex items-center gap-1.5 font-bold text-amber-200">
+                                    <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                                    <span>Support Officiel MoversGo</span>
+                                  </div>
+                                  <span className="px-2 py-0.2 rounded-full text-[9px] font-black bg-white/20 text-white uppercase tracking-wider">
+                                    Certifié
+                                  </span>
+                                </div>
+
+                                <p className="whitespace-pre-line text-xs font-normal leading-relaxed text-slate-50">
+                                  {msg.content}
+                                </p>
+
+                                {msg.attachments && msg.attachments.length > 0 && (
+                                  <div className="mt-2.5 space-y-1 pt-2 border-t border-white/20">
+                                    {msg.attachments.map((att, attIdx) => (
+                                      <a
+                                        key={attIdx}
+                                        href={att.filePath}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="text-[11px] underline flex items-center gap-1 text-rose-100 hover:text-white"
+                                      >
+                                        <Paperclip className="w-3 h-3" />
+                                        <span>{att.fileName || "Pièce jointe"}</span>
+                                      </a>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
                             </div>
-                            <div
-                              className={`max-w-[75%] rounded-2xl p-3.5 text-xs leading-relaxed ${
-                                isMe
-                                  ? "bg-[#800020] text-white rounded-tr-none shadow-sm"
-                                  : "bg-white text-slate-800 rounded-tl-none border border-slate-200 shadow-2xs"
-                              }`}
-                            >
-                              <p className="whitespace-pre-line font-normal">{msg.content}</p>
+                          );
+                        }
+
+                        // ── CASE B: CLIENT MESSAGE (Bulle Azur / Sky avec étiquette Client) ──
+                        if (isSenderClient) {
+                          return (
+                            <div key={mId} className="flex flex-col items-start my-2">
+                              <div className="flex items-center gap-1.5 mb-1 px-1">
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-sky-100 text-sky-800 border border-sky-300 text-[10px] font-bold">
+                                  <User className="w-3 h-3 text-sky-600" />
+                                  <span>👤 Client : {senderName}</span>
+                                </span>
+                                <span className="text-[10px] text-slate-400 font-mono">{timeStr}</span>
+                              </div>
+
+                              <div className="max-w-[78%] rounded-2xl rounded-tl-xs p-3.5 bg-sky-50/90 text-sky-950 border-2 border-sky-200/90 shadow-2xs">
+                                <p className="whitespace-pre-line text-xs font-normal leading-relaxed">
+                                  {msg.content}
+                                </p>
+                                {msg.attachments && msg.attachments.length > 0 && (
+                                  <div className="mt-2 space-y-1 pt-2 border-t border-sky-200">
+                                    {msg.attachments.map((att, attIdx) => (
+                                      <a
+                                        key={attIdx}
+                                        href={att.filePath}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="text-[11px] underline flex items-center gap-1 text-sky-700 hover:text-sky-900"
+                                      >
+                                        <Paperclip className="w-3 h-3" />
+                                        <span>{att.fileName || "Pièce jointe"}</span>
+                                      </a>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        }
+
+                        // ── CASE C: COMPANY / DÉMÉNAGEUR (Bulle Émeraude avec étiquette Déménageur) ──
+                        return (
+                          <div key={mId} className="flex flex-col items-start my-2">
+                            <div className="flex items-center gap-1.5 mb-1 px-1">
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 text-[10px] font-bold">
+                                <Truck className="w-3 h-3 text-emerald-600" />
+                                <span>🚚 Déménageur : {senderName}</span>
+                              </span>
+                              <span className="text-[10px] text-slate-400 font-mono">{timeStr}</span>
+                            </div>
+
+                            <div className="max-w-[78%] rounded-2xl rounded-tl-xs p-3.5 bg-emerald-50/90 text-emerald-950 border-2 border-emerald-200/90 shadow-2xs">
+                              <p className="whitespace-pre-line text-xs font-normal leading-relaxed">
+                                {msg.content}
+                              </p>
                               {msg.attachments && msg.attachments.length > 0 && (
-                                <div className="mt-2 space-y-1 pt-2 border-t border-white/20">
+                                <div className="mt-2 space-y-1 pt-2 border-t border-emerald-200">
                                   {msg.attachments.map((att, attIdx) => (
                                     <a
                                       key={attIdx}
                                       href={att.filePath}
                                       target="_blank"
                                       rel="noreferrer"
-                                      className={`text-[11px] underline flex items-center gap-1 ${
-                                        isMe ? "text-rose-200" : "text-[#800020]"
-                                      }`}
+                                      className="text-[11px] underline flex items-center gap-1 text-emerald-700 hover:text-emerald-900"
                                     >
                                       <Paperclip className="w-3 h-3" />
                                       <span>{att.fileName || "Pièce jointe"}</span>
@@ -1565,23 +1976,34 @@ export function AdminSupportPage() {
                     <div ref={chatMessagesEndRef} />
                   </div>
 
-                  {/* Input Form */}
+                  {/* Input Form with Admin Certification Notice */}
                   <form onSubmit={handleSendLiveChatMessage} className="p-3 border-t border-slate-100 bg-white space-y-2">
+                    {/* Notice bar */}
+                    <div className="px-3 py-1.5 rounded-xl bg-rose-50 border border-rose-200 text-[#800020] flex items-center justify-between text-[11px] font-bold">
+                      <span className="flex items-center gap-1.5">
+                        <ShieldCheck className="w-3.5 h-3.5 text-[#800020]" />
+                        <span>Vous intervenez en tant que Support Officiel MoversGo</span>
+                      </span>
+                      <span className="text-[10px] text-slate-500 font-normal hidden sm:inline">
+                        Message identifié en bordeaux officiel certifié
+                      </span>
+                    </div>
+
                     {/* Quick suggestion chips */}
                     <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
                       {[
-                        "Bonjour, comment pouvons-nous vous assister ?",
-                        "Votre demande a bien été transmise au transporteur.",
-                        "Pouvez-vous nous confirmer l'adresse exacte ?",
-                        "Le paiement de votre acompte est bien sécurisé en séquestre."
+                        "Bonjour, ici le Support Officiel MoversGo, comment pouvons-nous vous assister ?",
+                        "La plateforme confirme la bonne prise en compte de votre réservation.",
+                        "Le paiement de votre acompte est sécurisé par séquestre bancaire.",
+                        "Nous invitons les deux parties à respecter les engagements contractuels."
                       ].map((chip, idx) => (
                         <button
                           key={idx}
                           type="button"
                           onClick={() => setLiveChatMessageText(chip)}
-                          className="whitespace-nowrap text-[10px] bg-slate-100 hover:bg-rose-50 hover:text-[#800020] text-slate-600 px-2 py-0.5 rounded-full border border-slate-200 transition-colors"
+                          className="whitespace-nowrap text-[10px] bg-slate-100 hover:bg-rose-50 hover:text-[#800020] text-slate-600 px-2 py-0.5 rounded-full border border-slate-200 transition-colors cursor-pointer"
                         >
-                          {chip.length > 30 ? `${chip.substring(0, 27)}...` : chip}
+                          {chip.length > 32 ? `${chip.substring(0, 30)}...` : chip}
                         </button>
                       ))}
                     </div>
@@ -1591,20 +2013,20 @@ export function AdminSupportPage() {
                         type="text"
                         value={liveChatMessageText}
                         onChange={(e) => setLiveChatMessageText(e.target.value)}
-                        placeholder="Écrire un message d'assistance en direct... (Entrée pour envoyer)"
+                        placeholder="Rédiger une intervention officielle MoversGo... (Entrée pour envoyer)"
                         className="flex-1 px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-[#800020]/20 focus:border-[#800020]"
                       />
                       <button
                         type="submit"
                         disabled={liveChatSending || !liveChatMessageText.trim()}
-                        className="px-5 py-2.5 rounded-xl bg-[#800020] hover:bg-[#68001a] disabled:opacity-50 text-white font-bold text-xs flex items-center gap-1.5 shadow-md transition-all flex-shrink-0"
+                        className="px-5 py-2.5 rounded-xl bg-[#800020] hover:bg-[#68001a] disabled:opacity-50 text-white font-bold text-xs flex items-center gap-1.5 shadow-md transition-all flex-shrink-0 cursor-pointer"
                       >
                         {liveChatSending ? (
                           <Loader2 className="w-4 h-4 animate-spin" />
                         ) : (
                           <>
                             <Send className="w-3.5 h-3.5" />
-                            <span>Envoyer</span>
+                            <span>Envoyer (Admin)</span>
                           </>
                         )}
                       </button>

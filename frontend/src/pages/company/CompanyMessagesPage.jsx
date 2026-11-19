@@ -18,6 +18,8 @@ import {
   ShieldOff,
   ShieldCheck,
   MoreVertical,
+  Sparkles,
+  Paperclip,
 } from "lucide-react";
 
 function avatarUrl(img) {
@@ -104,9 +106,13 @@ export function CompanyMessagesPage() {
       socket.emit("join:conversation", selectedConv._id);
 
       const handleNewMessage = (newMsg) => {
-        if (String(newMsg.conversation) === String(selectedConv._id)) {
+        if (!newMsg) return;
+        const msgConvId = String(newMsg.conversation?._id || newMsg.conversation?.id || newMsg.conversation || "");
+        const currentConvId = String(selectedConv._id || selectedConv.id || "");
+        if (msgConvId === currentConvId) {
           setMessages((prev) => {
-            if (prev.some((m) => m._id === newMsg._id)) return prev;
+            const newId = String(newMsg._id || newMsg.id || "");
+            if (newId && prev.some((m) => String(m._id || m.id || "") === newId)) return prev;
             return [...prev, newMsg];
           });
           setConversations((prev) =>
@@ -123,15 +129,18 @@ export function CompanyMessagesPage() {
 
       // Handle new messages from OTHER conversations
       const handleMessageReceived = (newMsg) => {
-        if (String(newMsg.conversation) !== String(selectedConv._id)) {
+        if (!newMsg) return;
+        const msgConvId = String(newMsg.conversation?._id || newMsg.conversation?.id || newMsg.conversation || "");
+        const currentConvId = String(selectedConv._id || selectedConv.id || "");
+        if (msgConvId !== currentConvId) {
           setConversations((prev) =>
             prev.map((c) =>
-              String(c._id) === String(newMsg.conversation)
+              String(c._id) === msgConvId
                 ? { ...c, lastMessage: newMsg, lastMessageAt: new Date() }
                 : c
             )
           );
-          if (!conversations.some((c) => String(c._id) === String(newMsg.conversation))) {
+          if (!conversations.some((c) => String(c._id) === msgConvId)) {
             fetchConversations();
           }
         }
@@ -168,9 +177,10 @@ export function CompanyMessagesPage() {
       const res = await messageService.sendMessage(selectedConv._id, { content: contentToSend });
       // messageService.sendMessage returns { message: {...} }
       const createdMsg = res?.message || res?.data?.message || res?.data;
-      if (createdMsg?._id) {
+      if (createdMsg) {
         setMessages((prev) => {
-          if (prev.some((m) => m._id === createdMsg._id)) return prev;
+          const newId = String(createdMsg._id || createdMsg.id || "");
+          if (newId && prev.some((m) => String(m._id || m.id || "") === newId)) return prev;
           return [...prev, createdMsg];
         });
       }
@@ -230,10 +240,14 @@ export function CompanyMessagesPage() {
   });
 
   const partner = getPartner(selectedConv);
-  const partnerName = partner
+  const isPartnerAdmin = partner?.role === "admin";
+  const hasAdminParticipant = selectedConv?.participants?.some((p) => p.role === "admin");
+  const partnerName = isPartnerAdmin
+    ? "Support Officiel MoversGo"
+    : partner
     ? `${partner.firstName} ${partner.lastName}`
     : "Client Particulier";
-  const partnerPhoto = avatarUrl(partner?.profileImage);
+  const partnerPhoto = isPartnerAdmin ? null : avatarUrl(partner?.profileImage);
 
   return (
     <div className="space-y-6">
@@ -288,8 +302,13 @@ export function CompanyMessagesPage() {
               filteredConversations.map((c) => {
                 const isSelected = selectedConv?._id === c._id;
                 const p = getPartner(c);
-                const pName = p ? `${p.firstName} ${p.lastName}` : "Client";
-                const pImg = avatarUrl(p?.profileImage);
+                const isPAdmin = p?.role === "admin";
+                const pName = isPAdmin
+                  ? "Support Officiel MoversGo"
+                  : p
+                  ? `${p.firstName} ${p.lastName}`
+                  : "Client";
+                const pImg = isPAdmin ? null : avatarUrl(p?.profileImage);
                 const lastMsg = c.lastMessage?.content || "Conversation démarrée";
 
                 return (
@@ -300,7 +319,11 @@ export function CompanyMessagesPage() {
                     className={`w-full p-4 text-left transition-colors flex items-start gap-3 ${isSelected ? "bg-white shadow-xs" : "hover:bg-slate-100/60"
                       }`}
                   >
-                    {pImg ? (
+                    {isPAdmin ? (
+                      <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#800020] to-[#5a0016] text-white flex items-center justify-center flex-shrink-0 font-bold shadow-xs">
+                        <ShieldCheck className="w-5 h-5 text-amber-300" />
+                      </div>
+                    ) : pImg ? (
                       <img
                         src={pImg}
                         alt={pName}
@@ -313,8 +336,15 @@ export function CompanyMessagesPage() {
                     )}
 
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between">
-                        <h4 className="text-xs font-bold text-slate-900 truncate">{pName}</h4>
+                      <div className="flex items-center justify-between gap-1 mb-0.5">
+                        <div className="flex items-center gap-1.5 min-w-0 truncate">
+                          <h4 className="text-xs font-bold text-slate-900 truncate">{pName}</h4>
+                          {isPAdmin && (
+                            <span className="px-1.5 py-0.2 rounded text-[9px] font-black bg-rose-50 text-[#800020] border border-rose-200 flex-shrink-0">
+                              Support
+                            </span>
+                          )}
+                        </div>
                         <span className="text-[10px] text-slate-400 whitespace-nowrap">
                           {c.lastMessageAt ? formatDate(c.lastMessageAt) : ""}
                         </span>
@@ -335,7 +365,11 @@ export function CompanyMessagesPage() {
               {/* Header */}
               <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/40">
                 <div className="flex items-center gap-3">
-                  {partnerPhoto ? (
+                  {isPartnerAdmin ? (
+                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#800020] via-[#73001c] to-[#4d0013] text-white flex items-center justify-center font-bold shadow-xs">
+                      <ShieldCheck className="w-5 h-5 text-amber-300" />
+                    </div>
+                  ) : partnerPhoto ? (
                     <img
                       src={partnerPhoto}
                       alt={partnerName}
@@ -347,10 +381,32 @@ export function CompanyMessagesPage() {
                     </div>
                   )}
                   <div>
-                    <h3 className="text-sm font-bold text-slate-900">{partnerName}</h3>
-                    <p className="text-[11px] text-emerald-600 font-medium">
-                      Client MoversGo
-                    </p>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-sm font-bold text-slate-900">{partnerName}</h3>
+                      {isPartnerAdmin && (
+                        <span className="px-2 py-0.2 rounded-full text-[9px] font-black bg-rose-100 text-[#800020] border border-rose-300 uppercase tracking-wider">
+                          Support Certifié
+                        </span>
+                      )}
+                    </div>
+                    {isPartnerAdmin ? (
+                      <p className="text-[11px] text-[#800020] font-bold flex items-center gap-1.5 mt-0.5">
+                        <Sparkles className="w-3 h-3 text-amber-500" />
+                        <span>Administration & Assistance Officielle MoversGo</span>
+                      </p>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <p className="text-[11px] text-emerald-600 font-medium">
+                          Client MoversGo
+                        </p>
+                        {hasAdminParticipant && (
+                          <span className="px-2 py-0.2 rounded-full text-[9px] font-bold bg-rose-50 text-[#800020] border border-rose-200 flex items-center gap-1">
+                            <ShieldCheck className="w-3 h-3 text-[#800020]" />
+                            <span>Supervision active</span>
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -408,35 +464,148 @@ export function CompanyMessagesPage() {
                     <p className="text-[11px]">Envoyez un message pour confirmer l'organisation avec votre client.</p>
                   </div>
                 ) : (
-                  messages.map((msg) => {
-                    const senderId = msg.sender?._id || msg.sender;
-                    const isMe = String(senderId) === String(currentUser?._id);
-                    const time = msg.createdAt
-                      ? new Date(msg.createdAt).toLocaleTimeString("fr-FR", {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })
-                      : "";
+                  messages
+                    .filter((msg, idx, arr) => {
+                      const id = String(msg._id || msg.id || "");
+                      if (!id) return true;
+                      return arr.findIndex((m) => String(m._id || m.id || "") === id) === idx;
+                    })
+                    .map((msg, i) => {
+                      const sender = msg.sender || {};
+                      const senderId = sender._id || sender.id || sender;
+                      const isMe = String(senderId) === String(currentUser?._id);
+                      const isSenderAdmin = Boolean(
+                        msg.isAdminMessage ||
+                        sender.role === "admin" ||
+                        (!isMe && isPartnerAdmin)
+                      );
+                      const time = msg.createdAt
+                        ? new Date(msg.createdAt).toLocaleTimeString("fr-FR", {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })
+                        : "";
 
-                    return (
-                      <div
-                        key={msg._id || Math.random()}
-                        className={`flex flex-col ${isMe ? "items-end" : "items-start"}`}
-                      >
-                        <span className="text-[10px] text-slate-400 mb-1 px-1">
-                          {isMe ? "Moi (Entreprise)" : partnerName} • {time}
-                        </span>
+                      // ── CASE A: ADMIN MESSAGE (Forme et couleur de prestige MoversGo) ──
+                      if (isSenderAdmin) {
+                        return (
+                          <div
+                            key={msg._id || i}
+                            className="flex flex-col items-start my-3"
+                          >
+                            <div className="flex items-center gap-1.5 mb-1 px-1">
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-rose-100 text-[#800020] border border-rose-300 text-[10px] font-black tracking-wide shadow-2xs">
+                                <ShieldCheck className="w-3.5 h-3.5 text-[#800020]" />
+                                <span>🛡️ Intervention Officielle — Admin MoversGo</span>
+                              </span>
+                              <span className="text-[10px] text-slate-400 font-mono">{time}</span>
+                            </div>
+
+                            <div className="max-w-[85%] rounded-2xl rounded-tl-xs p-4 bg-gradient-to-br from-[#800020] via-[#73001c] to-[#4d0013] text-white shadow-lg border-2 border-rose-300/40 relative overflow-hidden">
+                              <div className="flex items-center justify-between gap-2 pb-2 mb-2 border-b border-white/20 text-[11px]">
+                                <div className="flex items-center gap-1.5 font-bold text-amber-200">
+                                  <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                                  <span>Support Officiel MoversGo</span>
+                                </div>
+                                <span className="px-2 py-0.2 rounded-full text-[9px] font-black bg-white/20 text-white uppercase tracking-wider">
+                                  Certifié
+                                </span>
+                              </div>
+
+                              <p className="whitespace-pre-line text-xs font-normal leading-relaxed text-slate-50">
+                                {msg.content}
+                              </p>
+
+                              {msg.attachments && msg.attachments.length > 0 && (
+                                <div className="mt-2.5 space-y-1 pt-2 border-t border-white/20">
+                                  {msg.attachments.map((att, attIdx) => (
+                                    <a
+                                      key={attIdx}
+                                      href={att.filePath}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="text-[11px] underline flex items-center gap-1 text-rose-100 hover:text-white"
+                                    >
+                                      <Paperclip className="w-3 h-3" />
+                                      <span>{att.fileName || "Pièce jointe"}</span>
+                                    </a>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      // ── CASE B: COMPANY (MOI) ──
+                      if (isMe) {
+                        return (
+                          <div
+                            key={msg._id || i}
+                            className="flex flex-col items-end my-2"
+                          >
+                            <span className="text-[10px] text-slate-400 mb-1 px-1">
+                              Moi (Entreprise) • {time}
+                            </span>
+                            <div className="max-w-md p-3.5 rounded-2xl rounded-br-none text-xs leading-relaxed shadow-xs bg-slate-900 text-white">
+                              <p className="whitespace-pre-line">{msg.content}</p>
+                              {msg.attachments && msg.attachments.length > 0 && (
+                                <div className="mt-2 space-y-1 pt-2 border-t border-white/20">
+                                  {msg.attachments.map((att, attIdx) => (
+                                    <a
+                                      key={attIdx}
+                                      href={att.filePath}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="text-[11px] underline flex items-center gap-1 text-white hover:text-slate-100"
+                                    >
+                                      <Paperclip className="w-3 h-3" />
+                                      <span>{att.fileName || "Pièce jointe"}</span>
+                                    </a>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      // ── CASE C: CLIENT PARTICULIER ──
+                      const clientSenderName = `${sender.firstName || ""} ${sender.lastName || ""}`.trim() || partnerName;
+                      return (
                         <div
-                          className={`max-w-md p-3.5 rounded-2xl text-xs leading-relaxed shadow-xs ${isMe
-                            ? "bg-slate-900 text-white rounded-br-none"
-                            : "bg-white text-slate-800 border border-slate-200/90 rounded-bl-none"
-                            }`}
+                          key={msg._id || i}
+                          className="flex flex-col items-start my-2"
                         >
-                          {msg.content}
+                          <div className="flex items-center gap-1.5 mb-1 px-1">
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-sky-100 text-sky-800 border border-sky-300 text-[10px] font-bold">
+                              <User className="w-3 h-3 text-sky-600" />
+                              <span>👤 Client : {clientSenderName}</span>
+                            </span>
+                            <span className="text-[10px] text-slate-400 font-mono">{time}</span>
+                          </div>
+                          <div className="max-w-md p-3.5 rounded-2xl rounded-bl-none text-xs leading-relaxed shadow-xs bg-white text-slate-800 border border-slate-200/90">
+                            <p className="whitespace-pre-line">{msg.content}</p>
+                            {msg.attachments && msg.attachments.length > 0 && (
+                              <div className="mt-2 space-y-1 pt-2 border-t border-slate-100">
+                                {msg.attachments.map((att, attIdx) => (
+                                  <a
+                                    key={attIdx}
+                                    href={att.filePath}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="text-[11px] underline flex items-center gap-1 text-slate-700 hover:text-slate-900"
+                                  >
+                                    <Paperclip className="w-3 h-3" />
+                                    <span>{att.fileName || "Pièce jointe"}</span>
+                                  </a>
+                                ))}
+                              </div>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    );
-                  })
+                      );
+                    })
                 )}
                 <div ref={messagesEndRef} />
               </div>

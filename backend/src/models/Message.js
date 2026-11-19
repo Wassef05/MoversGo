@@ -36,6 +36,10 @@ const messageSchema = new mongoose.Schema(
       default: false,
     },
     readAt: Date,
+    isAdminMessage: {
+      type: Boolean,
+      default: false,
+    },
   },
   {
     timestamps: true,

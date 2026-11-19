@@ -128,11 +128,20 @@ const getMessages = catchAsync(async (req, res) => {
   }
 
   const total = await Message.countDocuments({ conversation: conversation._id });
-  const messages = await Message.find({ conversation: conversation._id })
-    .populate('sender', 'firstName lastName profileImage role')
+  let messages = await Message.find({ conversation: conversation._id })
+    .populate('sender', 'firstName lastName profileImage role company')
     .sort({ createdAt: 1 })
     .skip((page - 1) * limit)
     .limit(limit);
+
+  // Normalize isAdminMessage for all messages where sender is admin
+  messages = messages.map((m) => {
+    const doc = m.toObject ? m.toObject() : m;
+    if (doc.sender && doc.sender.role === 'admin') {
+      doc.isAdminMessage = true;
+    }
+    return doc;
+  });
 
   const pagination = buildPagination(page, limit, total);
   return paginated(res, messages, pagination, 'Messages de la conversation');
@@ -209,58 +218,75 @@ const sendMessage = catchAsync(async (req, res) => {
     return badRequest(res, 'Le contenu du message ou une pièce jointe est obligatoire.');
   }
 
+  const isAdmin = req.user.role === 'admin';
+
+  const otherParticipants = conversation.participants.filter(
+    (p) => p.toString() !== req.user._id.toString()
+  );
+
   const message = await Message.create({
     conversation: conversation._id,
     sender: req.user._id,
     receiver: receiverId,
     content: content ? content.trim() : '',
     attachments,
+    isAdminMessage: isAdmin,
   });
 
-  // Update conversation lastMessage and receiver's unreadCount
+  // Update conversation lastMessage and each recipient's unreadCount
   conversation.lastMessage = message._id;
   conversation.lastMessageAt = new Date();
 
   if (!conversation.unreadCount) {
     conversation.unreadCount = new Map();
   }
-  const currentUnread = conversation.unreadCount.get(receiverId.toString()) || 0;
-  conversation.unreadCount.set(receiverId.toString(), currentUnread + 1);
+  for (const otherId of otherParticipants) {
+    const currentUnread = conversation.unreadCount.get(otherId.toString()) || 0;
+    conversation.unreadCount.set(otherId.toString(), currentUnread + 1);
+  }
   await conversation.save();
 
   // Populate sender for display
-  await message.populate('sender', 'firstName lastName profileImage role');
+  await message.populate('sender', 'firstName lastName profileImage role company');
 
-  // Real-time Socket.IO emission
+  // Real-time Socket.IO emission to room and all other participants
   const io = req.app.get('io');
   if (io) {
     io.to(`conversation:${conversation._id}`).emit('message:new', message);
-    io.to(`user:${receiverId.toString()}`).emit('message:received', message);
+    for (const otherId of otherParticipants) {
+      io.to(`user:${otherId.toString()}`).emit('message:received', message);
+    }
   }
 
-  // Create notification for receiver — link is role-aware
-  const receiverFull = await User.findById(receiverId).select('role');
-  const receiverRole = receiverFull?.role || 'client';
-  const msgLink = receiverRole === 'company'
-    ? `/company/messages/${conversation._id}`
-    : `/client/messages/${conversation._id}`;
-
+  // Create notification for other participants — role-aware
   const preview = content
     ? content.length > 80
       ? `${content.substring(0, 77)}...`
       : content
     : 'Vous a envoyé une pièce jointe';
 
-  await createNotification({
-    recipientId: receiverId,
-    title: `Nouveau message de ${req.user.firstName}`,
-    message: preview,
-    type: 'new_message',
-    entityType: 'message',
-    entityId: message._id,
-    link: msgLink,
-    io,
-  });
+  for (const otherId of otherParticipants) {
+    const receiverFull = await User.findById(otherId).select('role');
+    const receiverRole = receiverFull?.role || 'client';
+    const msgLink = receiverRole === 'company'
+      ? `/company/messages/${conversation._id}`
+      : `/client/messages/${conversation._id}`;
+
+    const senderTitle = isAdmin
+      ? '🛡️ Support Officiel MoversGo (Admin)'
+      : `Nouveau message de ${req.user.firstName}`;
+
+    await createNotification({
+      recipientId: otherId,
+      title: senderTitle,
+      message: preview,
+      type: 'new_message',
+      entityType: 'message',
+      entityId: message._id,
+      link: msgLink,
+      io,
+    });
+  }
 
   return created(res, { message }, 'Message envoyé');
 });
