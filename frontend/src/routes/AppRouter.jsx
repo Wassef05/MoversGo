@@ -72,6 +72,7 @@ import { CompanyStatisticsPage } from "../pages/company/CompanyStatisticsPage";
 import { CompanyProfilePage } from "../pages/company/CompanyProfilePage";
 import { CompanyPendingApprovalPage } from "../pages/company/CompanyPendingApprovalPage";
 import { CompanyNotificationsPage } from "../pages/company/CompanyNotificationsPage";
+import { CompanyTransactionsPage } from "../pages/company/CompanyTransactionsPage";
 
 // Admin Pages
 import { AdminDashboardPage } from "../pages/admin/AdminDashboardPage";
@@ -201,6 +202,8 @@ export function AppRouter() {
           <Route path="reviews" element={<CompanyReviewsPage />} />
           <Route path="documents" element={<CompanyDocumentsPage />} />
           <Route path="statistics" element={<CompanyStatisticsPage />} />
+          <Route path="transactions" element={<CompanyTransactionsPage />} />
+          <Route path="payments" element={<CompanyTransactionsPage />} />
           <Route path="notifications" element={<CompanyNotificationsPage />} />
           <Route path="support" element={<UserSupportPage role="company" />} />
           <Route path="support/:id" element={<UserSupportPage role="company" />} />

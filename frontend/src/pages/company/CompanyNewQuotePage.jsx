@@ -70,7 +70,7 @@ export function CompanyNewQuotePage() {
     "Notre équipe de professionnels qualifiés prendra en charge votre mobilier avec housses de protection capitonnées et matériel adapté."
   );
   const [terms, setTerms] = useState(
-    "Acompte de 30% requis à la réservation. Solde à la livraison après constat de bon état. Assurance incluse."
+    "Acompte exigible à la réservation. Solde à la livraison après constat de bon état. Assurance incluse."
   );
 
   const [includedServices, setIncludedServices] = useState([
@@ -445,23 +445,30 @@ export function CompanyNewQuotePage() {
             </div>
           </div>
 
-          {/* Deposit slider */}
+          {/* Deposit percentage selector */}
           <div>
-            <div className="flex justify-between items-center mb-1">
-              <label className="text-xs font-semibold text-slate-700">
-                Taux d'acompte exigible : <span className="text-brand-600 font-bold">{depositPercent}%</span>
-              </label>
-              <span className="text-[11px] text-slate-400">Entre 10% et 50%</span>
+            <label className="block text-xs font-semibold text-slate-700 mb-2">
+              Taux d'acompte exigible à la réservation
+            </label>
+            <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+              {[10, 20, 30, 40, 50, 60].map((pct) => (
+                <button
+                  key={pct}
+                  type="button"
+                  onClick={() => setDepositPercent(pct)}
+                  className={`py-2.5 rounded-xl border-2 text-sm font-bold transition-all ${
+                    depositPercent === pct
+                      ? "bg-brand-600 border-brand-600 text-white shadow-brand"
+                      : "bg-white border-slate-200 text-slate-700 hover:border-brand-400 hover:text-brand-600"
+                  }`}
+                >
+                  {pct}%
+                </button>
+              ))}
             </div>
-            <input
-              type="range"
-              min="10"
-              max="50"
-              step="5"
-              value={depositPercent}
-              onChange={(e) => setDepositPercent(parseInt(e.target.value, 10))}
-              className="w-full accent-brand-600"
-            />
+            <p className="mt-2 text-[11px] text-slate-400">
+              Montant de l'acompte : <span className="font-bold text-brand-600">{formatCurrency(depositCalculated)} TND</span> ({depositPercent}% de {formatCurrency(totalCalculated)})
+            </p>
           </div>
         </div>
 

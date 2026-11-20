@@ -86,6 +86,7 @@ export function Sidebar({ isOpen, onClose }) {
     { label: "Avis & Évaluations", href: "/company/reviews", icon: Star },
     { label: "Dossier & Conformité", href: "/company/documents", icon: FileCheck2 },
     { label: "Statistiques & CA", href: "/company/statistics", icon: BarChart3 },
+    { label: "Paiements & Transactions", href: "/company/transactions", icon: CreditCard },
     { label: "Notifications", href: "/company/notifications", icon: Bell, badge: unreadCount },
     { label: "Fiche Entreprise", href: "/company/profile", icon: Building2 },
     { label: "Tickets d'Assistance", href: "/company/support", icon: LifeBuoy },

@@ -53,7 +53,13 @@ const createQuote = catchAsync(async (req, res) => {
     return badRequest(res, 'Le montant total du devis doit être un nombre positif.');
   }
 
-  const numDepositPercent = Math.max(10, Math.min(50, parseFloat(depositPercent) || 30));
+  const allowedDepositPercents = [10, 20, 30, 40, 50, 60];
+  const parsedDepositPercent = parseFloat(depositPercent) || 30;
+  const numDepositPercent = allowedDepositPercents.includes(parsedDepositPercent)
+    ? parsedDepositPercent
+    : allowedDepositPercents.reduce((prev, curr) =>
+        Math.abs(curr - parsedDepositPercent) < Math.abs(prev - parsedDepositPercent) ? curr : prev
+      );
   // Server-side calculation of deposit
   const depositAmount = Math.round(numTotalPrice * (numDepositPercent / 100) * 100) / 100;
 
@@ -305,7 +311,13 @@ const updateQuote = catchAsync(async (req, res) => {
   }
 
   if (depositPercent !== undefined) {
-    quote.depositPercent = Math.max(10, Math.min(50, parseFloat(depositPercent) || 30));
+    const allowedDepositPercents = [10, 20, 30, 40, 50, 60];
+    const parsedDP = parseFloat(depositPercent) || 30;
+    quote.depositPercent = allowedDepositPercents.includes(parsedDP)
+      ? parsedDP
+      : allowedDepositPercents.reduce((prev, curr) =>
+          Math.abs(curr - parsedDP) < Math.abs(prev - parsedDP) ? curr : prev
+        );
   }
 
   // Recompute deposit server-side
@@ -472,7 +484,7 @@ const acceptQuote = catchAsync(async (req, res) => {
       platformFee,
       platformFeeRate: PLATFORM_COMMISSION_RATE,
       netToCompany,
-      notes: `Acompte initial de 30% pour réservation #${booking._id}`,
+      notes: `Acompte initial de ${quote.depositPercent || numDepositPercent}% pour réservation #${booking._id}`,
     };
 
     if (useSession && session) {
