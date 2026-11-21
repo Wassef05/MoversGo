@@ -587,7 +587,9 @@ export function ClientBookingDetailPage() {
               <strong className="text-slate-900 text-sm">{formatCurrency(total)}</strong>
             </div>
             <div className="flex justify-between items-center text-emerald-700 bg-emerald-50 p-2 rounded-xl">
-              <span>Acompte réglé en ligne (30%) :</span>
+              <span>
+                Acompte réglé en ligne ({booking.quote?.depositPercent || booking.depositPercent || (total > 0 ? Math.round((deposit / total) * 100) : 30)}%) :
+              </span>
               <strong className="font-bold">{formatCurrency(deposit)} (Sécurisé)</strong>
             </div>
             <div className="flex justify-between items-center pt-2 border-t border-slate-100 font-semibold text-slate-900">

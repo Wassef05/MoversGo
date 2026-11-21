@@ -151,7 +151,11 @@ export function ClientQuoteDetailPage() {
   const arrAddr = fmtAddr(request.arrivalAddress);
 
   const total = quote.totalPrice || 0;
-  const deposit = quote.depositAmount || Math.round(total * 0.3);
+  const quotePercent =
+    quote.depositPercent ||
+    quote.depositPercentage ||
+    (total > 0 && quote.depositAmount ? Math.round((quote.depositAmount / total) * 100) : 30);
+  const deposit = quote.depositAmount || Math.round(total * (quotePercent / 100));
   let priceDetails = quote.priceDetails || {};
   if (typeof priceDetails === "string") {
     try {
@@ -400,7 +404,7 @@ export function ClientQuoteDetailPage() {
 
               {/* Deposit Row */}
               <div className="py-3.5 px-5 flex justify-between items-center bg-brand-50/50 text-brand-800 text-xs font-semibold">
-                <span>Acompte de confirmation exigible ({quote.depositPercent || 30}%) :</span>
+                <span>Acompte de confirmation exigible ({quotePercent}%) :</span>
                 <span className="text-sm font-bold text-brand-700">{formatCurrency(deposit)}</span>
               </div>
             </div>

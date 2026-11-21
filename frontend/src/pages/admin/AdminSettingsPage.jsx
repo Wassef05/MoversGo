@@ -457,7 +457,7 @@ export function AdminSettingsPage() {
                   onChange={(e) => setDepositPercent(parseInt(e.target.value, 10))}
                   className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#800020]/20 focus:border-[#800020] font-bold text-slate-900"
                 />
-                <p className="text-[11px] text-slate-400 mt-1">Payé par le client à la réservation (30%)</p>
+                <p className="text-[11px] text-slate-400 mt-1">Défini par le déménageur sur son devis (10% à 60%)</p>
               </div>
 
               <div>

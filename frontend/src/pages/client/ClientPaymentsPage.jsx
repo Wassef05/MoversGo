@@ -25,13 +25,30 @@ import { Link } from "react-router-dom";
 // ─── helpers ────────────────────────────────────────────────────────────────
 
 function getDepositPercent(b) {
-  if (b?.depositPercent != null) return b.depositPercent;
-  if (b?.quote?.depositPercent != null) return b.quote.depositPercent;
+  // 1. Direct from company's quote (source of truth)
+  if (b?.quote?.depositPercent && Number(b.quote.depositPercent) > 0) {
+    return Number(b.quote.depositPercent);
+  }
+  if (b?.quote?.depositPercentage && Number(b.quote.depositPercentage) > 0) {
+    return Number(b.quote.depositPercentage);
+  }
+  if (b?.quote?.pricing?.depositPercentage && Number(b.quote.pricing.depositPercentage) > 0) {
+    return Number(b.quote.pricing.depositPercentage);
+  }
+
+  // 2. Exact mathematical calculation on Total TTC (depositAmount / totalAmount)
   const tot = b?.totalAmount || b?.quote?.totalPrice || 0;
   const dep = b?.depositAmount || b?.quote?.depositAmount || 0;
   if (tot > 0 && dep > 0) {
-    return Math.round((dep / tot) * 100);
+    const computed = Math.round((dep / tot) * 100);
+    if (computed > 0) return computed;
   }
+
+  // 3. From booking if available
+  if (b?.depositPercent && Number(b.depositPercent) > 0) {
+    return Number(b.depositPercent);
+  }
+
   return 30;
 }
 

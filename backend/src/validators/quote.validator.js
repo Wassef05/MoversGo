@@ -15,6 +15,14 @@ const createQuoteValidator = [
       }
     }
 
+    // 2b. Normalize depositPercent / depositPercentage
+    if (req.body.depositPercent === undefined && req.body.depositPercentage !== undefined) {
+      req.body.depositPercent = req.body.depositPercentage;
+    }
+    if (req.body.depositPercent === undefined && req.body.pricing && req.body.pricing.depositPercentage !== undefined) {
+      req.body.depositPercent = req.body.pricing.depositPercentage;
+    }
+
     // 3. Normalize validity date
     if (!req.body.validityDate && req.body.validUntil) {
       req.body.validityDate = req.body.validUntil;

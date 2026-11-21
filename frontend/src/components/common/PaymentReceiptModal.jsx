@@ -38,19 +38,44 @@ export default function PaymentReceiptModal({ isOpen, onClose, booking }) {
     "Arrivée";
 
   const totalAmount = b.totalAmount || b.quote?.totalPrice || 0;
-  const depositAmount = b.depositAmount || 0;
+
+  // Exact deposit percentage calculation strictly tied to company's quote and Total TTC
+  const depositPercent = (() => {
+    // 1. From the quote established by the company
+    if (b.quote?.depositPercent && Number(b.quote.depositPercent) > 0) {
+      return Number(b.quote.depositPercent);
+    }
+    if (b.quote?.depositPercentage && Number(b.quote.depositPercentage) > 0) {
+      return Number(b.quote.depositPercentage);
+    }
+    if (b.quote?.pricing?.depositPercentage && Number(b.quote.pricing.depositPercentage) > 0) {
+      return Number(b.quote.pricing.depositPercentage);
+    }
+
+    // 2. Exact mathematical calculation on the Total TTC (depositAmount / totalAmount)
+    const rawDep = b.depositAmount || b.quote?.depositAmount || 0;
+    if (totalAmount > 0 && rawDep > 0) {
+      const computed = Math.round((rawDep / totalAmount) * 100);
+      if (computed > 0) return computed;
+    }
+
+    // 3. From booking if set and positive
+    if (b.depositPercent && Number(b.depositPercent) > 0) {
+      return Number(b.depositPercent);
+    }
+
+    return 30;
+  })();
+
+  const depositAmount =
+    b.depositAmount ||
+    b.quote?.depositAmount ||
+    Math.round(totalAmount * (depositPercent / 100));
+
   const remainingAmount =
     b.remainingAmount != null
       ? b.remainingAmount
       : Math.max(0, totalAmount - depositAmount);
-
-  // Exact deposit percentage calculation
-  const depositPercent =
-    b.depositPercent ||
-    b.quote?.depositPercent ||
-    (totalAmount > 0
-      ? Math.round((depositAmount / totalAmount) * 100)
-      : 30);
 
   const receiptNumber = `REC-${String(b._id).slice(-8).toUpperCase()}`;
   const paymentDate = b.depositPaidAt || b.updatedAt || b.createdAt;
@@ -310,10 +335,10 @@ export default function PaymentReceiptModal({ isOpen, onClose, booking }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm overflow-y-auto">
-      <div className="relative w-full max-w-3xl my-8 bg-white rounded-3xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col">
-        {/* Modal Top Bar */}
-        <div className="flex items-center justify-between px-6 py-4 bg-slate-900 text-white border-b border-slate-800">
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/80 backdrop-blur-sm p-3 sm:p-6 flex justify-center items-start">
+      <div className="relative w-full max-w-3xl my-auto sm:my-6 bg-white rounded-3xl shadow-2xl border border-slate-200 flex flex-col max-h-[92vh] overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+        {/* Sticky Modal Top Bar */}
+        <div className="flex-shrink-0 flex items-center justify-between px-6 py-4 bg-slate-900 text-white border-b border-slate-800">
           <div className="flex items-center gap-2.5">
             <ShieldCheck className="w-5 h-5 text-emerald-400" />
             <span className="font-bold text-sm tracking-wide">
@@ -348,8 +373,8 @@ export default function PaymentReceiptModal({ isOpen, onClose, booking }) {
           </div>
         </div>
 
-        {/* Printable Receipt Body */}
-        <div ref={printableAreaRef} className="p-6 sm:p-8 space-y-6 text-slate-900">
+        {/* Scrollable Printable Receipt Body */}
+        <div ref={printableAreaRef} className="flex-1 overflow-y-auto p-6 sm:p-8 space-y-6 text-slate-900">
           {/* Header Card */}
           <div className="bg-gradient-to-r from-brand-700 via-brand-800 to-brand-900 rounded-2xl p-6 text-white shadow-md relative overflow-hidden">
             <div className="absolute right-0 top-0 bottom-0 w-1/3 bg-white/5 transform skew-x-12 pointer-events-none" />
@@ -438,7 +463,7 @@ export default function PaymentReceiptModal({ isOpen, onClose, booking }) {
             <div className="p-3.5 bg-slate-100/70 font-bold text-slate-700 flex justify-between">
               <span>Désignation de la transaction</span>
               <div className="flex gap-12 sm:gap-24">
-                <span>Taux</span>
+                <span>Taux Acompte</span>
                 <span>Montant TTC</span>
               </div>
             </div>
@@ -461,7 +486,7 @@ export default function PaymentReceiptModal({ isOpen, onClose, booking }) {
                 </p>
               </div>
               <div className="flex gap-12 sm:gap-24 items-center">
-                <span className="px-2 py-0.5 rounded-full bg-emerald-200 text-emerald-800 text-xs">
+                <span className="px-2.5 py-1 rounded-full bg-emerald-200 text-emerald-800 text-xs font-black">
                   {depositPercent}%
                 </span>
                 <span className="text-lg text-emerald-700 font-extrabold">
@@ -517,12 +542,12 @@ export default function PaymentReceiptModal({ isOpen, onClose, booking }) {
           </div>
         </div>
 
-        {/* Modal Bottom Actions */}
-        <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-end gap-3">
+        {/* Sticky Modal Bottom Actions */}
+        <div className="flex-shrink-0 px-6 py-4 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-end gap-3">
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-900 bg-white border border-slate-200 rounded-xl shadow-xs transition"
+            className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-900 bg-white border border-slate-200 rounded-xl shadow-xs transition cursor-pointer"
           >
             Fermer
           </button>

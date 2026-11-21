@@ -46,7 +46,7 @@ export function AdminQuotesPage() {
                 <th className="py-3.5 px-4">Demande associée</th>
                 <th className="py-3.5 px-4">Émis le</th>
                 <th className="py-3.5 px-4">Montant TTC</th>
-                <th className="py-3.5 px-4">Acompte 30%</th>
+                <th className="py-3.5 px-4">Acompte exigible</th>
                 <th className="py-3.5 px-4">Statut</th>
               </tr>
             </thead>
@@ -68,7 +68,8 @@ export function AdminQuotesPage() {
                   const qId = q._id || q.id;
                   const cName = q.company?.companyName || q.companyName || q.companyId?.commercialName || q.companyId?.legalName || "Entreprise";
                   const total = q.totalPrice ?? q.pricing?.total ?? q.price?.total ?? 0;
-                  const deposit = q.depositAmount ?? q.pricing?.depositRequired ?? q.price?.depositAmount ?? Math.round(total * 0.3);
+                  const pct = q.depositPercent ?? q.depositPercentage ?? q.pricing?.depositPercentage ?? (total > 0 && q.depositAmount ? Math.round((q.depositAmount / total) * 100) : 30);
+                  const deposit = q.depositAmount ?? q.pricing?.depositRequired ?? q.price?.depositAmount ?? Math.round(total * (pct / 100));
                   const title = q.movingRequest?.title || (q.movingRequest?.departureAddress ? `${q.movingRequest.departureAddress?.city || ''} ➔ ${q.movingRequest.arrivalAddress?.city || ''}` : '') || q.requestTitle || `Devis #${String(qId).slice(-6)}`;
                   return (
                     <tr key={qId} className="hover:bg-slate-50/50">
@@ -77,7 +78,9 @@ export function AdminQuotesPage() {
                       <td className="py-3.5 px-4 max-w-[220px] truncate">{title}</td>
                       <td className="py-3.5 px-4 text-slate-500">{formatDate(q.createdAt)}</td>
                       <td className="py-3.5 px-4 font-bold text-slate-900">{formatCurrency(total)}</td>
-                      <td className="py-3.5 px-4">{formatCurrency(deposit)}</td>
+                      <td className="py-3.5 px-4 font-semibold">
+                        {formatCurrency(deposit)} <span className="text-[11px] text-brand-600 font-bold">({pct}%)</span>
+                      </td>
                       <td className="py-3.5 px-4">
                         <StatusBadge status={q.status} />
                       </td>

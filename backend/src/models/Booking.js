@@ -46,7 +46,6 @@ const bookingSchema = new mongoose.Schema(
     },
     depositPercent: {
       type: Number,
-      default: 30,
     },
     remainingAmount: {
       type: Number,
@@ -185,6 +184,14 @@ bookingSchema.index({ movingRequest: 1 });
 bookingSchema.index({ bookingStatus: 1 });
 bookingSchema.index({ serviceStatus: 1 });
 bookingSchema.index({ scheduledDate: 1 });
+
+// Auto-compute depositPercent from depositAmount and totalAmount if missing
+bookingSchema.pre('save', function (next) {
+  if (this.totalAmount > 0 && this.depositAmount > 0 && (!this.depositPercent || this.depositPercent <= 0)) {
+    this.depositPercent = Math.round((this.depositAmount / this.totalAmount) * 100);
+  }
+  next();
+});
 
 module.exports = mongoose.model('Booking', bookingSchema);
 

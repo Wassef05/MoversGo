@@ -38,7 +38,8 @@ const createQuote = catchAsync(async (req, res) => {
     movingRequest: movingRequestId,
     totalPrice,
     priceDetails,
-    depositPercent = 30,
+    depositPercent,
+    depositPercentage,
     includedServices,
     excludedServices,
     terms,
@@ -54,7 +55,8 @@ const createQuote = catchAsync(async (req, res) => {
   }
 
   const allowedDepositPercents = [10, 20, 30, 40, 50, 60];
-  const parsedDepositPercent = parseFloat(depositPercent) || 30;
+  const rawDepositPercent = depositPercent !== undefined ? depositPercent : (depositPercentage !== undefined ? depositPercentage : 30);
+  const parsedDepositPercent = parseFloat(rawDepositPercent) || 30;
   const numDepositPercent = allowedDepositPercents.includes(parsedDepositPercent)
     ? parsedDepositPercent
     : allowedDepositPercents.reduce((prev, curr) =>

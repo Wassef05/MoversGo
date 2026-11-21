@@ -77,7 +77,11 @@ export function CompanyQuoteDetailPage() {
   const compName = company.companyName || "Mon Entreprise";
   const compLogo = getLogoUrl(company.logo);
   const total = quote.totalPrice || 0;
-  const deposit = quote.depositAmount || Math.round(total * 0.3);
+  const quotePercent =
+    quote.depositPercent ||
+    quote.depositPercentage ||
+    (total > 0 && quote.depositAmount ? Math.round((quote.depositAmount / total) * 100) : 30);
+  const deposit = quote.depositAmount || Math.round(total * (quotePercent / 100));
   const priceDetails = quote.priceDetails || {};
   const movingReq = quote.movingRequest || {};
   const client = movingReq.client || {};
@@ -265,7 +269,7 @@ export function CompanyQuoteDetailPage() {
                 <span className="text-brand-600 text-xl font-extrabold">{formatCurrency(total)}</span>
               </div>
               <div className="py-3.5 px-5 flex justify-between items-center bg-brand-50/50 text-brand-800 text-xs font-semibold">
-                <span>Acompte client ({quote.depositPercent || 30}%) :</span>
+                <span>Acompte client ({quotePercent}%) :</span>
                 <span className="text-sm font-bold text-brand-700">{formatCurrency(deposit)}</span>
               </div>
             </div>

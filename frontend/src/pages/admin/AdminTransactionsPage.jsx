@@ -123,7 +123,7 @@ export function AdminTransactionsPage() {
           </div>
           <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">Volume Brut Encaissé</p>
           <p className="text-2xl font-black text-slate-900 mt-1">{formatCurrency(totalAmount)}</p>
-          <p className="text-[11px] text-slate-400 mt-1">Acomptes (30%) & soldes de déménagement</p>
+          <p className="text-[11px] text-slate-400 mt-1">Acomptes séquestre & soldes de déménagement</p>
         </motion.div>
 
         <motion.div
