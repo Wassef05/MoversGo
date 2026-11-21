@@ -31,7 +31,7 @@ const getMyBookings = catchAsync(async (req, res) => {
   const bookings = await Booking.find(filter)
     .populate('company', 'companyName logo averageRating phone address')
     .populate('movingRequest', 'departureAddress arrivalAddress preferredDate status title')
-    .populate('quote', 'totalPrice depositAmount priceDetails')
+    .populate('quote', 'totalPrice depositAmount depositPercent priceDetails')
     .sort({ scheduledDate: -1, createdAt: -1 })
     .skip((page - 1) * limit)
     .limit(limit);
@@ -62,7 +62,7 @@ const getCompanyBookings = catchAsync(async (req, res) => {
   const bookings = await Booking.find(filter)
     .populate('client', 'firstName lastName phone email profileImage')
     .populate('movingRequest', 'departureAddress arrivalAddress preferredDate status title comments')
-    .populate('quote', 'totalPrice depositAmount priceDetails estimatedDuration')
+    .populate('quote', 'totalPrice depositAmount depositPercent priceDetails estimatedDuration')
     .sort({ scheduledDate: -1, createdAt: -1 })
     .skip((page - 1) * limit)
     .limit(limit);
@@ -362,6 +362,25 @@ const requestDepositPayment = catchAsync(async (req, res) => {
       companyName: company.companyName,
     },
   });
+
+  // Direct socket broadcast to ensure immediate real-time dashboard update without page refresh
+  if (io) {
+    const liveUpdatePayload = {
+      bookingId: String(booking._id),
+      paymentRequested: true,
+      requestedPaymentMode: booking.requestedPaymentMode,
+      paymentStatus: booking.paymentStatus,
+      type: 'payment_requested',
+      meta: {
+        bookingId: String(booking._id),
+        amount: booking.depositAmount,
+        paymentMode: isCash ? 'espece' : 'virement',
+        companyName: company.companyName,
+      },
+    };
+    io.to(`user:${clientId}`).emit('booking:updated', liveUpdatePayload);
+    io.emit('booking:updated', liveUpdatePayload);
+  }
 
   // Automated message in chat
   try {

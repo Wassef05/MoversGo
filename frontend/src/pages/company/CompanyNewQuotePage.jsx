@@ -456,11 +456,10 @@ export function CompanyNewQuotePage() {
                   key={pct}
                   type="button"
                   onClick={() => setDepositPercent(pct)}
-                  className={`py-2.5 rounded-xl border-2 text-sm font-bold transition-all ${
-                    depositPercent === pct
+                  className={`py-2.5 rounded-xl border-2 text-sm font-bold transition-all ${depositPercent === pct
                       ? "bg-brand-600 border-brand-600 text-white shadow-brand"
                       : "bg-white border-slate-200 text-slate-700 hover:border-brand-400 hover:text-brand-600"
-                  }`}
+                    }`}
                 >
                   {pct}%
                 </button>

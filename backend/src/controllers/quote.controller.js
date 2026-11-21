@@ -449,6 +449,7 @@ const acceptQuote = catchAsync(async (req, res) => {
       estimatedDuration: quote.estimatedDuration || 'Demi-journée',
       totalAmount: quote.totalPrice,
       depositAmount: quote.depositAmount,
+      depositPercent: quote.depositPercent || (quote.totalPrice > 0 ? Math.round((quote.depositAmount / quote.totalPrice) * 100) : 30),
       remainingAmount,
       platformFee,
       netToCompany,

@@ -32,15 +32,17 @@ const createNotification = async ({
 
     // Emit real-time event if Socket.IO is available
     if (io) {
-      io.to(`user:${recipientId}`).emit('notification:new', {
+      const targetRoom = `user:${String(recipientId)}`;
+      const unreadCount = await getUnreadCount(recipientId);
+      io.to(targetRoom).emit('notification:new', {
         notification,
-        unreadCount: await getUnreadCount(recipientId),
+        unreadCount,
         meta: meta || null,
       });
 
       // Also emit a focused booking update event so booking pages reload immediately
       if (entityType === 'booking' && entityId) {
-        io.to(`user:${recipientId}`).emit('booking:updated', {
+        io.to(targetRoom).emit('booking:updated', {
           bookingId: String(entityId),
           type,
           meta: meta || null,

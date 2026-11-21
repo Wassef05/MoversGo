@@ -44,6 +44,10 @@ const bookingSchema = new mongoose.Schema(
       required: true,
       min: 0,
     },
+    depositPercent: {
+      type: Number,
+      default: 30,
+    },
     remainingAmount: {
       type: Number,
       required: true,

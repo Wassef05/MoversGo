@@ -197,6 +197,20 @@ export function NotificationProvider({ children }) {
         typeof data?.unreadCount === "number" ? data.unreadCount : c + 1
       );
 
+      // Instantly trigger booking listeners if this notification relates to a booking
+      const relBookingId =
+        notif.meta?.bookingId ||
+        (notif.relatedEntity?.entityType === "booking"
+          ? String(notif.relatedEntity.entityId)
+          : null);
+      if (relBookingId) {
+        handleBookingUpdated({
+          bookingId: relBookingId,
+          type: notif.type,
+          meta: notif.meta,
+        });
+      }
+
       // Enriched toast with action link
       const type = notif.type || "system";
       const cfg = TYPE_CONFIG[type] || TYPE_CONFIG.system;
