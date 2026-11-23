@@ -1,4 +1,4 @@
-# MoveFlow TN — Plateforme Marketplace Professionnelle de Déménagement en Tunisie
+# MoversGo — Plateforme Marketplace Professionnelle de Déménagement en Tunisie
 
 > **Architecture Full-Stack Production-Ready : React.js (Vite) + Node.js (Express 5) + MongoDB (Mongoose) + Socket.IO**
 
@@ -96,7 +96,7 @@ L'application intègre une gestion intelligente et automatique de la base de don
    MONGODB_URI=mongodb://127.0.0.1:27017/moveflow_tn
    ```
 2. **Compatibilité MongoDB Compass** :
-   Ouvrez **MongoDB Compass** (`C:\Users\wasse\AppData\Local\MongoDBCompass\MongoDBCompass.exe`), collez l'URI ci-dessous et cliquez sur **Connect** :
+
    ```
    mongodb://127.0.0.1:27017/moveflow_tn
    ```
