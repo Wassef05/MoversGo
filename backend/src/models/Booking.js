@@ -178,6 +178,35 @@ bookingSchema.virtual('paidAt').get(function () {
   return this.createdAt;
 });
 
+// Virtual depositPercentage
+bookingSchema.virtual('depositPercentage').get(function () {
+  if (this.depositPercent && Number(this.depositPercent) > 0) return Number(this.depositPercent);
+  if (this.totalAmount > 0 && this.depositAmount > 0) {
+    return Math.round((this.depositAmount / this.totalAmount) * 100);
+  }
+  return 30;
+});
+
+bookingSchema.set('toJSON', {
+  virtuals: true,
+  transform: (doc, ret) => {
+    if ((ret.depositPercent == null || ret.depositPercent <= 0) && ret.totalAmount > 0 && ret.depositAmount > 0) {
+      ret.depositPercent = Math.round((ret.depositAmount / ret.totalAmount) * 100);
+    }
+    return ret;
+  },
+});
+
+bookingSchema.set('toObject', {
+  virtuals: true,
+  transform: (doc, ret) => {
+    if ((ret.depositPercent == null || ret.depositPercent <= 0) && ret.totalAmount > 0 && ret.depositAmount > 0) {
+      ret.depositPercent = Math.round((ret.depositAmount / ret.totalAmount) * 100);
+    }
+    return ret;
+  },
+});
+
 bookingSchema.index({ client: 1 });
 bookingSchema.index({ company: 1 });
 bookingSchema.index({ movingRequest: 1 });
@@ -190,7 +219,9 @@ bookingSchema.pre('save', function (next) {
   if (this.totalAmount > 0 && this.depositAmount > 0 && (!this.depositPercent || this.depositPercent <= 0)) {
     this.depositPercent = Math.round((this.depositAmount / this.totalAmount) * 100);
   }
-  next();
+  if (typeof next === 'function') {
+    next();
+  }
 });
 
 module.exports = mongoose.model('Booking', bookingSchema);

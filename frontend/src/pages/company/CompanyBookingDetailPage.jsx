@@ -250,6 +250,14 @@ export function CompanyBookingDetailPage() {
   const total = booking.totalAmount || booking.quote?.totalPrice || 0;
   const deposit = booking.depositAmount || booking.quote?.depositAmount || 0;
   const remaining = booking.remainingAmount || (total - deposit);
+  const depositPercent = (() => {
+    if (booking.quote?.depositPercent && Number(booking.quote.depositPercent) > 0) return Number(booking.quote.depositPercent);
+    if (booking.quote?.depositPercentage && Number(booking.quote.depositPercentage) > 0) return Number(booking.quote.depositPercentage);
+    if (booking.quote?.pricing?.depositPercentage && Number(booking.quote.pricing.depositPercentage) > 0) return Number(booking.quote.pricing.depositPercentage);
+    if (total > 0 && deposit > 0) return Math.round((deposit / total) * 100);
+    if (booking.depositPercent && Number(booking.depositPercent) > 0) return Number(booking.depositPercent);
+    return 30;
+  })();
   const date = booking.scheduledDate || req.preferredDate;
   const time = booking.scheduledTime || "08:00";
   const duration = booking.estimatedDuration || booking.quote?.estimatedDuration || "Demi-journée";
@@ -720,14 +728,31 @@ export function CompanyBookingDetailPage() {
                 <strong className="text-slate-900 text-base">{formatCurrency(total)}</strong>
               </div>
 
-              <div className="flex justify-between items-center p-2.5 rounded-xl bg-emerald-50 border border-emerald-100 text-emerald-900">
-                <span>Acompte consigné (Séquestre) :</span>
-                <strong className="font-bold">{formatCurrency(deposit)}</strong>
+              <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-100 text-emerald-900 space-y-1.5">
+                <div className="flex justify-between items-center font-bold">
+                  <span>Acompte ({depositPercent}%) consigné (Séquestre) :</span>
+                  <span>{formatCurrency(deposit)}</span>
+                </div>
+                <div className="pt-1 border-t border-emerald-200/60 text-[11px] space-y-1">
+                  <div className="flex justify-between items-center text-emerald-800">
+                    <span>• Net encaissé par votre entreprise ({depositPercent - (depositPercent / 10) * 2}% TTC) :</span>
+                    <strong className="font-bold">+{formatCurrency(booking.netToCompany || Math.round(deposit * 0.8))}</strong>
+                  </div>
+                  <div className="flex justify-between items-center text-brand-700">
+                    <span>• Commission plateforme MoversGo ({(depositPercent / 10) * 2}% TTC) :</span>
+                    <strong className="font-bold">-{formatCurrency(booking.platformFee || Math.round(deposit * 0.2))}</strong>
+                  </div>
+                </div>
               </div>
 
               <div className="flex justify-between items-center p-2.5 rounded-xl bg-brand-50 border border-brand-100 text-brand-900 font-bold">
-                <span>Solde à encaisser le jour J :</span>
+                <span>Solde à encaisser le jour J (100% entreprise) :</span>
                 <span className="text-base">{formatCurrency(remaining)}</span>
+              </div>
+
+              <div className="flex justify-between items-center px-1 text-slate-800 text-[11px] font-semibold">
+                <span>Total net perçu par votre entreprise :</span>
+                <span className="text-emerald-700 font-bold text-xs">{formatCurrency((booking.netToCompany || Math.round(deposit * 0.8)) + remaining)}</span>
               </div>
             </div>
 
@@ -800,7 +825,7 @@ export function CompanyBookingDetailPage() {
                 </div>
                 <div>
                   <h3 className="text-sm font-bold text-slate-900">Demande d'acompte au client</h3>
-                  <p className="text-[11px] text-slate-500">Montant de l'acompte : <strong>{formatCurrency(deposit)}</strong></p>
+                  <p className="text-[11px] text-slate-500">Montant de l'acompte ({depositPercent}%) : <strong>{formatCurrency(deposit)}</strong></p>
                 </div>
               </div>
               <button

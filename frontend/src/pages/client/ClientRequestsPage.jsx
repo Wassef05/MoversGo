@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 
 export function ClientRequestsPage() {
-  const { onRequestUpdate } = useNotifications();
+  const { onRequestUpdate, onQuoteUpdate } = useNotifications();
   const [requests, setRequests] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
@@ -47,11 +47,17 @@ export function ClientRequestsPage() {
 
   useEffect(() => {
     fetchRequests();
-    const unregister = onRequestUpdate(() => {
+    const unregisterReq = onRequestUpdate?.(() => {
       fetchRequests(true);
     });
-    return unregister;
-  }, [onRequestUpdate]);
+    const unregisterQuote = onQuoteUpdate?.(() => {
+      fetchRequests(true);
+    });
+    return () => {
+      if (typeof unregisterReq === "function") unregisterReq();
+      if (typeof unregisterQuote === "function") unregisterQuote();
+    };
+  }, [onRequestUpdate, onQuoteUpdate]);
 
   const fmtFullAddress = (addr) => {
     if (!addr) return "Adresse non spécifiée";

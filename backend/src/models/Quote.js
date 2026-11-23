@@ -28,7 +28,6 @@ const quoteSchema = new mongoose.Schema(
     },
     depositPercent: {
       type: Number,
-      default: 30, // Default 30%
     },
     // Included services
     includedServices: [String],

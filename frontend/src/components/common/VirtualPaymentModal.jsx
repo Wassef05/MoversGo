@@ -23,7 +23,31 @@ import {
 export function VirtualPaymentModal({ isOpen, onClose, booking, onSuccess }) {
   if (!isOpen || !booking) return null;
 
-  const depositAmount = booking.depositAmount || booking.quote?.depositAmount || 0;
+  const totalAmount = booking.totalAmount || booking.quote?.totalPrice || 0;
+  const depositPercent = (() => {
+    if (booking.quote?.depositPercent && Number(booking.quote.depositPercent) > 0) {
+      return Number(booking.quote.depositPercent);
+    }
+    if (booking.quote?.depositPercentage && Number(booking.quote.depositPercentage) > 0) {
+      return Number(booking.quote.depositPercentage);
+    }
+    if (booking.quote?.pricing?.depositPercentage && Number(booking.quote.pricing.depositPercentage) > 0) {
+      return Number(booking.quote.pricing.depositPercentage);
+    }
+    const rawDep = booking.depositAmount || booking.quote?.depositAmount || 0;
+    if (totalAmount > 0 && rawDep > 0) {
+      const computed = Math.round((rawDep / totalAmount) * 100);
+      if (computed > 0) return computed;
+    }
+    if (booking.depositPercent && Number(booking.depositPercent) > 0) {
+      return Number(booking.depositPercent);
+    }
+    return 30;
+  })();
+  const depositAmount =
+    booking.depositAmount ||
+    booking.quote?.depositAmount ||
+    Math.round(totalAmount * (depositPercent / 100));
   const companyName =
     booking.company?.companyName || booking.companyName || "Entreprise de déménagement";
   const clientName =
@@ -116,8 +140,8 @@ export function VirtualPaymentModal({ isOpen, onClose, booking, onSuccess }) {
         setProcessingStep("error");
         setErrorMsg(
           err.response?.data?.message ||
-            err.message ||
-            "Échec du traitement du paiement virtuel."
+          err.message ||
+          "Échec du traitement du paiement virtuel."
         );
       }
     }, 1200);
@@ -273,7 +297,7 @@ export function VirtualPaymentModal({ isOpen, onClose, booking, onSuccess }) {
               <div className="p-4 rounded-2xl bg-brand-50/60 border border-brand-200/80 flex items-center justify-between">
                 <div>
                   <span className="text-[10px] font-bold uppercase tracking-wider text-brand-600 block">
-                    Acompte de confirmation à consigner
+                    Acompte de confirmation à consigner ({depositPercent}%)
                   </span>
                   <p className="text-xs text-slate-700 mt-0.5">
                     Déménageur : <strong>{companyName}</strong>

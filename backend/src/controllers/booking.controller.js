@@ -13,6 +13,9 @@ const {
   buildPagination,
 } = require('../utils/apiResponse');
 const { createNotification } = require('../services/notification.service');
+const { calculateCommission } = require('../utils/commission.util');
+
+const DEPOSIT_COMMISSION_RATE = parseFloat(process.env.PLATFORM_COMMISSION_RATE) || 0.02;
 
 /**
  * GET /api/v1/bookings/my
@@ -29,9 +32,10 @@ const getMyBookings = catchAsync(async (req, res) => {
 
   const total = await Booking.countDocuments(filter);
   const bookings = await Booking.find(filter)
-    .populate('company', 'companyName logo averageRating phone address')
-    .populate('movingRequest', 'departureAddress arrivalAddress preferredDate status title')
-    .populate('quote', 'totalPrice depositAmount depositPercent priceDetails')
+    .populate('client', 'firstName lastName email phone address')
+    .populate('company', 'companyName logo averageRating phone address email user')
+    .populate('movingRequest', 'departureAddress arrivalAddress preferredDate status title comments')
+    .populate('quote')
     .sort({ scheduledDate: -1, createdAt: -1 })
     .skip((page - 1) * limit)
     .limit(limit);
@@ -61,8 +65,9 @@ const getCompanyBookings = catchAsync(async (req, res) => {
   const total = await Booking.countDocuments(filter);
   const bookings = await Booking.find(filter)
     .populate('client', 'firstName lastName phone email profileImage')
+    .populate('company', 'companyName logo averageRating phone address email user')
     .populate('movingRequest', 'departureAddress arrivalAddress preferredDate status title comments')
-    .populate('quote', 'totalPrice depositAmount depositPercent priceDetails estimatedDuration')
+    .populate('quote')
     .sort({ scheduledDate: -1, createdAt: -1 })
     .skip((page - 1) * limit)
     .limit(limit);
@@ -195,6 +200,14 @@ const updateServiceStatus = catchAsync(async (req, res) => {
     io,
   });
 
+  if (io && company.user) {
+    io.to(`user:${String(company.user)}`).emit('booking:updated', {
+      bookingId: String(booking._id),
+      serviceStatus,
+      type: 'service_status_updated',
+    });
+  }
+
   return success(res, { booking }, `Statut du service mis à jour: ${serviceStatus}`);
 });
 
@@ -298,7 +311,7 @@ const getAllBookings = catchAsync(async (req, res) => {
     .populate('client', 'firstName lastName email phone')
     .populate('company', 'companyName phone logo')
     .populate('movingRequest', 'departureAddress arrivalAddress preferredDate title')
-    .populate('quote', 'totalPrice depositAmount')
+    .populate('quote')
     .sort({ createdAt: -1 })
     .skip((page - 1) * limit)
     .limit(limit);
@@ -320,7 +333,8 @@ const requestDepositPayment = catchAsync(async (req, res) => {
   const booking = await Booking.findById(req.params.id)
     .populate('client', 'firstName lastName email phone')
     .populate('company', 'companyName phone logo user')
-    .populate('movingRequest');
+    .populate('movingRequest')
+    .populate('quote');
 
   if (!booking) {
     return notFound(res, 'Réservation introuvable');
@@ -476,7 +490,8 @@ const payDeposit = catchAsync(async (req, res) => {
   const booking = await Booking.findById(req.params.id)
     .populate('client', 'firstName lastName email phone')
     .populate('company', 'companyName phone logo user')
-    .populate('movingRequest');
+    .populate('movingRequest')
+    .populate('quote');
 
   if (!booking) {
     return notFound(res, 'Réservation introuvable');
@@ -500,6 +515,12 @@ const payDeposit = catchAsync(async (req, res) => {
   const Payment = require('../models/Payment');
   const Transaction = require('../models/Transaction');
 
+  const fin = calculateCommission({
+    totalPrice: booking.totalAmount,
+    depositPercent: booking.depositPercent,
+    depositAmount: booking.depositAmount,
+  });
+
   const paymentRef = `PAY-${Date.now()}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
   const payment = await Payment.create({
     booking: booking._id,
@@ -512,8 +533,8 @@ const payDeposit = catchAsync(async (req, res) => {
     provider: 'test',
     transactionReference: paymentRef,
     paymentStatus: 'completed',
-    platformFee: booking.platformFee || Math.round(booking.depositAmount * 0.12),
-    netToCompany: booking.netToCompany || Math.round(booking.depositAmount * 0.88),
+    platformFee: booking.platformFee || fin.platformFee,
+    netToCompany: booking.netToCompany || fin.netToCompanyDeposit,
     paidAt: new Date(),
     notes: `Acompte réglé par carte virtuelle (finissant par ${cardLast4}) - Séquestre MoversGo`,
   });
@@ -525,9 +546,9 @@ const payDeposit = catchAsync(async (req, res) => {
     company: booking.company._id,
     amount: booking.depositAmount,
     type: 'deposit',
-    platformFee: booking.platformFee || Math.round(booking.depositAmount * 0.12),
-    platformFeeRate: 0.12,
-    netToCompany: booking.netToCompany || Math.round(booking.depositAmount * 0.88),
+    platformFee: booking.platformFee || fin.platformFee,
+    platformFeeRate: fin.commissionRateOnTTC,
+    netToCompany: booking.netToCompany || fin.netToCompanyDeposit,
     paymentMethod: 'card',
     status: 'completed',
     description: `Acompte séquestre consigné - Carte •••• ${cardLast4}`,
@@ -719,7 +740,8 @@ const confirmCashDeposit = catchAsync(async (req, res) => {
   const booking = await Booking.findById(req.params.id)
     .populate('client', 'firstName lastName email phone')
     .populate('company', 'companyName phone logo user')
-    .populate('movingRequest');
+    .populate('movingRequest')
+    .populate('quote');
 
   if (!booking) {
     return notFound(res, 'Réservation introuvable');
@@ -741,6 +763,12 @@ const confirmCashDeposit = catchAsync(async (req, res) => {
   const Payment = require('../models/Payment');
   const Transaction = require('../models/Transaction');
 
+  const fin = calculateCommission({
+    totalPrice: booking.totalAmount,
+    depositPercent: booking.depositPercent,
+    depositAmount: booking.depositAmount,
+  });
+
   const paymentRef = `PAY-CASH-${Date.now()}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
   const payment = await Payment.create({
     booking: booking._id,
@@ -753,8 +781,8 @@ const confirmCashDeposit = catchAsync(async (req, res) => {
     provider: 'manual',
     transactionReference: paymentRef,
     paymentStatus: 'completed',
-    platformFee: booking.platformFee || Math.round(booking.depositAmount * 0.12),
-    netToCompany: booking.netToCompany || Math.round(booking.depositAmount * 0.88),
+    platformFee: booking.platformFee || fin.platformFee,
+    netToCompany: booking.netToCompany || fin.netToCompanyDeposit,
     paidAt: new Date(),
     notes: `Acompte réglé en espèces et validé par le transporteur ${company.companyName}`,
   });
@@ -766,9 +794,9 @@ const confirmCashDeposit = catchAsync(async (req, res) => {
     company: company._id,
     amount: booking.depositAmount,
     type: 'deposit',
-    platformFee: booking.platformFee || Math.round(booking.depositAmount * 0.12),
-    platformFeeRate: 0.12,
-    netToCompany: booking.netToCompany || Math.round(booking.depositAmount * 0.88),
+    platformFee: booking.platformFee || fin.platformFee,
+    platformFeeRate: fin.commissionRateOnTTC,
+    netToCompany: booking.netToCompany || fin.netToCompanyDeposit,
     paymentMethod: 'cash',
     status: 'completed',
     description: `Acompte réglé en espèces - Réception validée`,
@@ -982,6 +1010,12 @@ const getOrCreateInvoice = async (bookingId) => {
     });
   }
 
+  const fin = calculateCommission({
+    totalPrice: booking.totalAmount,
+    depositPercent: booking.depositPercent,
+    depositAmount: booking.depositAmount,
+  });
+
   const invoiceNumber = `FAC-${new Date().getFullYear()}-${String(booking._id).slice(-6).toUpperCase()}`;
 
   invoice = await Invoice.create({
@@ -1033,6 +1067,9 @@ const getOrCreateInvoice = async (bookingId) => {
     remainingBalanceTTC: remaining,
     paymentStatus: booking.paymentStatus,
     paymentMethod: booking.requestedPaymentMode || 'card',
+    depositCommissionRate: fin.commissionRateOnTTC,
+    depositCommissionAmount: fin.platformFee,
+    depositNetToCompany: fin.netToCompanyDeposit,
     isSignedByCompany: false,
     isSignedByClient: false,
     isFullySigned: false,
@@ -1055,8 +1092,10 @@ const getBookingInvoice = catchAsync(async (req, res) => {
     return notFound(res, 'Réservation introuvable');
   }
 
-  // Permission check
-  if (req.user.role === 'client') {
+  // Permission check — admin can view all invoices
+  if (req.user.role === 'admin') {
+    // Admin bypass: full access
+  } else if (req.user.role === 'client') {
     if (booking.client.toString() !== req.user._id.toString()) {
       return forbidden(res, 'Accès non autorisé à cette facture.');
     }
@@ -1088,7 +1127,7 @@ const getBookingInvoice = catchAsync(async (req, res) => {
 
   // If caller is client and invoice is NOT yet signed by company:
   // Enforce rule: "le client peux consulté la facture mais aprés la signature de l'entreprise"
-  if (req.user.role === 'client' && !invoice.isSignedByCompany) {
+  if (req.user.role === 'client' && req.user.role !== 'admin' && !invoice.isSignedByCompany) {
     return success(
       res,
       {

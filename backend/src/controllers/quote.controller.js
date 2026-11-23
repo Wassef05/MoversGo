@@ -17,8 +17,9 @@ const {
   buildPagination,
 } = require('../utils/apiResponse');
 const { createNotification } = require('../services/notification.service');
+const { calculateCommission } = require('../utils/commission.util');
 
-const PLATFORM_COMMISSION_RATE = parseFloat(process.env.PLATFORM_COMMISSION_RATE) || 0.12;
+const PLATFORM_COMMISSION_RATE = parseFloat(process.env.PLATFORM_COMMISSION_RATE) || 0.02;
 
 /**
  * POST /api/v1/quotes
@@ -152,7 +153,29 @@ const createQuote = catchAsync(async (req, res) => {
     entityId: quote._id,
     link: `/client/quotes/${quote._id}`,
     io,
+    meta: {
+      quoteId: String(quote._id),
+      requestId: String(movingRequestId),
+      companyName: company.companyName,
+      totalPrice: numTotalPrice,
+    },
   });
+
+  if (io) {
+    const clientRoom = `user:${String(movingRequest.client)}`;
+    io.to(clientRoom).emit('quote:new', {
+      quote: populatedQuote,
+      quoteId: String(quote._id),
+      requestId: String(movingRequestId),
+      type: 'new_quote',
+      companyName: company.companyName,
+      totalPrice: numTotalPrice,
+    });
+    io.to(clientRoom).emit('request:updated', {
+      requestId: String(movingRequestId),
+      status: 'quoted',
+    });
+  }
 
   return created(res, { quote: populatedQuote }, 'Devis envoyé avec succès');
 });
@@ -383,10 +406,18 @@ const acceptQuote = catchAsync(async (req, res) => {
     return badRequest(res, 'Cette demande est déjà réservée.');
   }
 
-  // Financial calculations
-  const platformFee = Math.round(quote.totalPrice * PLATFORM_COMMISSION_RATE * 100) / 100;
-  const netToCompany = Math.round((quote.totalPrice - platformFee) * 100) / 100;
-  const remainingAmount = Math.round((quote.totalPrice - quote.depositAmount) * 100) / 100;
+  // Financial calculations — progressive commission: 2% on Total TTC per 10% deposit
+  const fin = calculateCommission({
+    totalPrice: quote.totalPrice,
+    depositPercent: quote.depositPercent,
+    depositAmount: quote.depositAmount,
+  });
+
+  const depositAmount = fin.depositAmount;
+  const depositPercent = fin.depositPercent;
+  const platformFee = fin.platformFee;
+  const netToCompany = fin.netToCompanyDeposit;
+  const remainingAmount = fin.remainingAmount;
 
   // Multi-document transactions require a Replica Set deployment
   const topologyType = mongoose.connection?.client?.topology?.description?.type || '';
@@ -450,8 +481,8 @@ const acceptQuote = catchAsync(async (req, res) => {
       scheduledTime: '08:00',
       estimatedDuration: quote.estimatedDuration || 'Demi-journée',
       totalAmount: quote.totalPrice,
-      depositAmount: quote.depositAmount,
-      depositPercent: quote.depositPercent || (quote.totalPrice > 0 ? Math.round((quote.depositAmount / quote.totalPrice) * 100) : 30),
+      depositAmount,
+      depositPercent,
       remainingAmount,
       platformFee,
       netToCompany,
@@ -478,16 +509,16 @@ const acceptQuote = catchAsync(async (req, res) => {
       booking: booking._id,
       client: req.user._id,
       company: quote.company,
-      amount: quote.depositAmount,
+      amount: depositAmount,
       currency: 'TND',
       paymentType: 'deposit',
       paymentMethod: 'card',
       provider: 'test',
       paymentStatus: 'pending',
       platformFee,
-      platformFeeRate: PLATFORM_COMMISSION_RATE,
+      platformFeeRate: fin.commissionRateOnTTC,
       netToCompany,
-      notes: `Acompte initial de ${quote.depositPercent || numDepositPercent}% pour réservation #${booking._id}`,
+      notes: `Acompte initial de ${depositPercent}% pour réservation #${booking._id}`,
     };
 
     if (useSession && session) {
@@ -503,10 +534,10 @@ const acceptQuote = catchAsync(async (req, res) => {
       payment: payment._id,
       client: req.user._id,
       company: quote.company,
-      amount: quote.depositAmount,
+      amount: depositAmount,
       type: 'deposit',
       platformFee,
-      platformFeeRate: PLATFORM_COMMISSION_RATE,
+      platformFeeRate: fin.commissionRateOnTTC,
       netToCompany,
       paymentMethod: 'card',
       status: 'pending',

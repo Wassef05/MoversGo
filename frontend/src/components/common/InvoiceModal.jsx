@@ -19,10 +19,13 @@ import {
   RotateCcw,
   Check,
   Sparkles,
+  Eye,
+  TrendingUp,
 } from "lucide-react";
 import { formatCurrency, formatDate, getLogoUrl } from "../../utils/cn";
 import { bookingService } from "../../services/api/bookingService";
 import { useAuth } from "../../contexts/AuthContext";
+import { calculateCommission } from "../../utils/commission";
 import { toast } from "sonner";
 
 /**
@@ -70,8 +73,9 @@ export default function InvoiceModal({
   const clientCanvasRef = useRef(null);
 
   const userRole = currentUser?.role;
-  const isCompanyUser = userRole === "company" || userRole === "admin";
-  const isClientUser = userRole === "client" || (!isCompanyUser && Boolean(currentUser?._id));
+  const isAdmin = userRole === "admin";
+  const isCompanyUser = userRole === "company";
+  const isClientUser = userRole === "client";
 
   const fetchInvoiceData = useCallback(() => {
     if (!bookingId) return;
@@ -94,7 +98,7 @@ export default function InvoiceModal({
           setInvoice(realInvoice);
           setInvoiceStatus(
             realInvoice.status ||
-              (realInvoice.isSignedByCompany ? "available" : "awaiting_company_signature")
+            (realInvoice.isSignedByCompany ? "available" : "awaiting_company_signature")
           );
         } else if (data?.status === "awaiting_company_signature" || data?.invoice === null) {
           setInvoice(null);
@@ -503,13 +507,12 @@ export default function InvoiceModal({
             <div>
               <h2 className="text-base font-bold text-white flex items-center gap-2">
                 Facture Finale de Déménagement
-                <span className={`text-xs px-2.5 py-0.5 rounded-full font-semibold border ${
-                  invoice?.isFullySigned
+                <span className={`text-xs px-2.5 py-0.5 rounded-full font-semibold border ${invoice?.isFullySigned
                     ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/30"
                     : invoice?.companySignatureImage
                       ? "bg-blue-500/20 text-blue-300 border-blue-500/30"
                       : "bg-amber-500/20 text-amber-300 border-amber-500/30"
-                }`}>
+                  }`}>
                   {invoice?.isFullySigned
                     ? "Double Signature Numérique • 100% Conforme"
                     : invoice?.companySignatureImage
@@ -861,6 +864,25 @@ export default function InvoiceModal({
           ) : invoice ? (
             <div id="official-invoice-print-area" className="space-y-6 text-slate-800 bg-white">
               {/* Top Workflow Status Banners */}
+              {isAdmin && (
+                <div className="no-print p-3.5 rounded-2xl bg-slate-900 border border-slate-800 text-white flex items-center justify-between gap-3 shadow-sm">
+                  <div className="flex items-center gap-2.5 text-xs">
+                    <div className="w-8 h-8 rounded-xl bg-brand-600 text-white flex items-center justify-center shrink-0 font-bold">
+                      <Eye className="w-4 h-4 text-white" />
+                    </div>
+                    <div>
+                      <span className="font-extrabold text-white">Supervision Haute Direction • Consultation Facture & Contrat Signé</span>
+                      <span className="text-[11px] text-slate-300 block mt-0.5">
+                        Mode lecture seule réservé à l'administrateur. Seules l'entreprise de déménagement et le client sont autorisés à apposer ou modifier leurs signatures numériques.
+                      </span>
+                    </div>
+                  </div>
+                  <span className="hidden sm:inline-block px-3 py-1 rounded-full bg-slate-800 text-slate-200 text-[10px] font-extrabold border border-slate-700 uppercase tracking-wider">
+                    Consultation Seule
+                  </span>
+                </div>
+              )}
+
               {isCompanyUser && !invoice.isSignedByCompany && (
                 <div className="no-print p-4 rounded-2xl bg-gradient-to-r from-amber-50 to-orange-50 border-2 border-amber-300 text-amber-950 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
                   <div className="flex items-center gap-3">
@@ -1125,47 +1147,133 @@ export default function InvoiceModal({
               </div>
 
               {/* Financial Recap & Highlighted Remaining Balance */}
-              <div className="flex flex-col sm:flex-row justify-end gap-6 pt-2">
-                <div className="w-full sm:w-96 space-y-3 bg-slate-50 rounded-2xl p-5 border border-slate-200">
-                  {/* Total TTC */}
-                  <div className="flex justify-between items-center text-sm text-slate-700">
-                    <span>Montant Total Prestation (TTC) :</span>
-                    <span className="font-black text-slate-900 text-base font-mono">
-                      {formatCurrency(invoice.totalTTC)}
-                    </span>
-                  </div>
+              {(() => {
+                const finCommission = calculateCommission({
+                  totalPrice: invoice.totalTTC,
+                  depositAmount: invoice.depositPaidTTC,
+                });
+                const commFee =
+                  invoice.depositCommissionAmount != null && invoice.depositCommissionAmount > 0
+                    ? invoice.depositCommissionAmount
+                    : finCommission.platformFee;
+                const netDeposit =
+                  invoice.depositNetToCompany != null && invoice.depositNetToCompany > 0
+                    ? invoice.depositNetToCompany
+                    : finCommission.netToCompanyDeposit;
+                const commPctTTC =
+                  invoice.depositCommissionRate != null && invoice.depositCommissionRate > 0
+                    ? Math.round(invoice.depositCommissionRate * 1000) / 10
+                    : finCommission.commissionPercentOnTTC;
+                const netPctTTC = Math.max(0, finCommission.depositPercent - commPctTTC);
+                const totalNetCompany =
+                  netDeposit + (invoice.remainingBalanceTTC || finCommission.remainingAmount);
+                const showCommissionBreakdown = isCompanyUser || isAdmin;
 
-                  {/* Acompte Versé */}
-                  <div className="flex justify-between items-center text-sm text-emerald-800 font-medium">
-                    <span className="flex items-center gap-1.5">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                      Acompte TTC Payé / Consigné :
-                    </span>
-                    <span className="font-bold text-emerald-800 font-mono">
-                      - {formatCurrency(invoice.depositPaidTTC || 0)}
-                    </span>
-                  </div>
-
-                  <div className="pt-2 border-t border-slate-300" />
-
-                  {/* Reste TTC à payer sur place */}
-                  <div className="p-4 bg-amber-100/90 rounded-2xl border-2 border-amber-400">
-                    <div className="flex justify-between items-center">
-                      <div>
-                        <div className="text-xs font-black uppercase tracking-wider text-amber-950">
-                          Reste TTC à Payer sur Place
+                return (
+                  <div
+                    className={`flex flex-col sm:flex-row gap-6 pt-2 ${
+                      showCommissionBreakdown ? "justify-between items-start" : "justify-end"
+                    }`}
+                  >
+                    {/* BORDEREAU DE TRANSPARENCE POUR ENTREPRISE & ADMIN */}
+                    {showCommissionBreakdown && (
+                      <div className="w-full sm:flex-1 bg-slate-50/90 rounded-2xl p-4 sm:p-5 border border-slate-200/90 space-y-3">
+                        <div className="flex items-center justify-between pb-2 border-b border-slate-200">
+                          <span className="font-bold text-xs text-slate-800 flex items-center gap-1.5">
+                            <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                            Transparence Financière MoversGo ({finCommission.depositPercent}% Acompte)
+                          </span>
+                          <span className="font-mono text-[10px] font-bold px-2 py-0.5 rounded-full bg-brand-50 text-brand-700 border border-brand-200">
+                            2% TTC / 10% acompte
+                          </span>
                         </div>
-                        <div className="text-[11px] text-amber-800 font-semibold mt-0.5">
-                          À régler au chauffeur à la livraison
+
+                        <div className="space-y-2 text-xs">
+                          <div className="flex justify-between items-center text-slate-600">
+                            <span>Acompte consigné sous séquestre :</span>
+                            <span className="font-bold text-slate-900 font-mono">
+                              {formatCurrency(invoice.depositPaidTTC || finCommission.depositAmount)}
+                            </span>
+                          </div>
+
+                          <div className="flex justify-between items-center text-brand-700">
+                            <span>• Commission plateforme MoversGo ({commPctTTC}% TTC) :</span>
+                            <span className="font-bold font-mono">
+                              -{formatCurrency(commFee)}
+                            </span>
+                          </div>
+
+                          <div className="flex justify-between items-center text-emerald-800 font-medium">
+                            <span>• Net perçu sur acompte ({netPctTTC}% TTC) :</span>
+                            <span className="font-bold font-mono text-emerald-800">
+                              +{formatCurrency(netDeposit)}
+                            </span>
+                          </div>
+
+                          <div className="flex justify-between items-center text-slate-600">
+                            <span>• Solde restant à la livraison (100% entreprise) :</span>
+                            <span className="font-bold font-mono text-slate-900">
+                              +{formatCurrency(invoice.remainingBalanceTTC || finCommission.remainingAmount)}
+                            </span>
+                          </div>
+
+                          <div className="pt-2 border-t border-slate-200 flex justify-between items-center">
+                            <span className="font-extrabold text-slate-900">Total Net Perçu par le Transporteur :</span>
+                            <span className="text-sm font-black text-emerald-700 font-mono">
+                              {formatCurrency(totalNetCompany)}
+                            </span>
+                          </div>
                         </div>
+
+                        <p className="text-[10px] text-slate-400 italic pt-1">
+                          * Note interne de transparence réservée au transporteur et à la haute direction MoversGo.
+                        </p>
                       </div>
-                      <div className="text-2xl font-black text-amber-950 font-mono tracking-tight">
-                        {formatCurrency(invoice.remainingBalanceTTC)}
+                    )}
+
+                    {/* RECAPITULATIF TTC CLIENT & RESTE SUR PLACE */}
+                    <div className="w-full sm:w-96 space-y-3 bg-slate-50 rounded-2xl p-5 border border-slate-200">
+                      {/* Total TTC */}
+                      <div className="flex justify-between items-center text-sm text-slate-700">
+                        <span>Montant Total Prestation (TTC) :</span>
+                        <span className="font-black text-slate-900 text-base font-mono">
+                          {formatCurrency(invoice.totalTTC)}
+                        </span>
+                      </div>
+
+                      {/* Acompte Versé */}
+                      <div className="flex justify-between items-center text-sm text-emerald-800 font-medium">
+                        <span className="flex items-center gap-1.5">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                          Acompte TTC Payé / Consigné :
+                        </span>
+                        <span className="font-bold text-emerald-800 font-mono">
+                          - {formatCurrency(invoice.depositPaidTTC || 0)}
+                        </span>
+                      </div>
+
+                      <div className="pt-2 border-t border-slate-300" />
+
+                      {/* Reste TTC à payer sur place */}
+                      <div className="p-4 bg-amber-100/90 rounded-2xl border-2 border-amber-400">
+                        <div className="flex justify-between items-center">
+                          <div>
+                            <div className="text-xs font-black uppercase tracking-wider text-amber-950">
+                              Reste TTC à Payer sur Place
+                            </div>
+                            <div className="text-[11px] text-amber-800 font-semibold mt-0.5">
+                              À régler au chauffeur à la livraison
+                            </div>
+                          </div>
+                          <div className="text-2xl font-black text-amber-950 font-mono tracking-tight">
+                            {formatCurrency(invoice.remainingBalanceTTC)}
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
-              </div>
+                );
+              })()}
 
               {/* Official Stamp & Signatures */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 pt-6 border-t-2 border-slate-200">

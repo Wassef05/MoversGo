@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from "react";
-import { Link } from "react-router-dom";
 import { adminService } from "../../services/api/adminService";
 import { StatusBadge } from "../../components/common/StatusBadge";
 import { formatCurrency, formatDate } from "../../utils/cn";
-import { Eye } from "lucide-react";
+import { Eye, FileText } from "lucide-react";
+import { InvoiceModal } from "../../components/common/InvoiceModal";
 
 export function AdminBookingsPage() {
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [selectedInvoiceBookingId, setSelectedInvoiceBookingId] = useState(null);
 
   useEffect(() => {
     async function load() {
@@ -34,7 +35,7 @@ export function AdminBookingsPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Supervision des Réservations Fermes</h1>
-        <p className="text-xs text-slate-500">Toutes les opérations de déménagement validées avec acompte réglé</p>
+        <p className="text-xs text-slate-500">Toutes les opérations de déménagement validées avec acompte réglé — Lecture des contrats signés disponible</p>
       </div>
 
       <div className="bg-white rounded-3xl border border-slate-200/80 shadow-subtle overflow-hidden">
@@ -50,7 +51,7 @@ export function AdminBookingsPage() {
                 <th className="py-3.5 px-4">Total</th>
                 <th className="py-3.5 px-4">Acompte Séquestre</th>
                 <th className="py-3.5 px-4">Statut</th>
-                <th className="py-3.5 px-4 text-right">Action</th>
+                <th className="py-3.5 px-4 text-right">Contrat Signé</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-slate-700">
@@ -69,15 +70,18 @@ export function AdminBookingsPage() {
               ) : (
                 bookings.map((b) => {
                   const bId = b._id || b.id;
-                  const cName = b.client ? `${b.client.firstName || ''} ${b.client.lastName || ''}`.trim() : (b.clientName || 'Client Particulier');
+                  const cName = b.client
+                    ? `${b.client.firstName || ''} ${b.client.lastName || ''}`.trim()
+                    : (b.clientName || 'Client Particulier');
                   const compName = b.company?.companyName || b.companyName || 'Déménageur Agréé';
                   const dep = b.movingRequest?.departureAddress?.city || b.departureCity || 'Tunis';
                   const arr = b.movingRequest?.arrivalAddress?.city || b.arrivalCity || 'Sousse';
                   const total = b.totalAmount ?? b.quote?.totalPrice ?? 0;
-                  const depPaid = b.depositPaid ?? b.quote?.depositAmount ?? Math.round(total * 0.3);
+                  const depPaid = b.depositAmount ?? b.depositPaid ?? b.quote?.depositAmount ?? Math.round(total * 0.1);
                   const mDate = b.scheduledDate || b.movingDate || b.createdAt;
-                  const mTime = b.movingTime || '08:00';
+                  const mTime = b.movingTime || b.scheduledTime || '08:00';
                   const status = b.bookingStatus || b.status;
+                  const hasInvoice = b.paymentStatus === 'deposit_paid' || b.paymentStatus === 'fully_paid';
 
                   return (
                     <tr key={bId} className="hover:bg-slate-50/50">
@@ -92,12 +96,18 @@ export function AdminBookingsPage() {
                         <StatusBadge status={status} />
                       </td>
                       <td className="py-3.5 px-4 text-right">
-                        <Link
-                          to={`/client/bookings/${bId}`}
-                          className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 inline-block"
-                        >
-                          <Eye className="w-3.5 h-3.5" />
-                        </Link>
+                        {hasInvoice ? (
+                          <button
+                            onClick={() => setSelectedInvoiceBookingId(String(bId))}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-brand-200 bg-brand-50 text-brand-700 hover:bg-brand-100 text-xs font-semibold transition-colors"
+                            title="Lire le contrat / facture signée"
+                          >
+                            <FileText className="w-3.5 h-3.5" />
+                            <span>Contrat</span>
+                          </button>
+                        ) : (
+                          <span className="text-[10px] text-slate-400 italic">En attente acompte</span>
+                        )}
                       </td>
                     </tr>
                   );
@@ -107,7 +117,15 @@ export function AdminBookingsPage() {
           </table>
         </div>
       </div>
+
+      {/* Invoice Modal for Admin */}
+      {selectedInvoiceBookingId && (
+        <InvoiceModal
+          isOpen={!!selectedInvoiceBookingId}
+          onClose={() => setSelectedInvoiceBookingId(null)}
+          bookingId={selectedInvoiceBookingId}
+        />
+      )}
     </div>
   );
 }
-

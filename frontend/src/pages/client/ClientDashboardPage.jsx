@@ -33,48 +33,63 @@ import {
 
 export function ClientDashboardPage() {
   const { currentUser } = useAuth();
-  const { onBookingUpdate } = useNotifications();
+  const { onBookingUpdate, onQuoteUpdate, onRequestUpdate } = useNotifications();
   const [requests, setRequests] = useState([]);
   const [quotes, setQuotes] = useState([]);
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
 
   async function loadData() {
-    const allReqs = await dataService.getRequests();
-    const allQuotes = await dataService.getQuotes();
-    const allBookings = await dataService.getBookings();
+    try {
+      const allReqs = await dataService.getRequests();
+      const allQuotes = await dataService.getQuotes();
+      const allBookings = await dataService.getBookings();
 
-    const myId = (currentUser?._id || currentUser?.id)?.toString();
-    const userReqs = allReqs.filter((r) => {
-      const rClientId = (r.clientId || r.client?._id || r.client)?.toString();
-      return (myId && rClientId === myId) || r.clientEmail === currentUser?.email;
-    });
+      const myId = (currentUser?._id || currentUser?.id)?.toString();
+      const userReqs = allReqs.filter((r) => {
+        const rClientId = (r.clientId || r.client?._id || r.client)?.toString();
+        return (myId && rClientId === myId) || r.clientEmail === currentUser?.email;
+      });
 
-    const userBookings = allBookings.filter((b) => {
-      const bClientId = (b.clientId || b.client?._id || b.client)?.toString();
-      return (myId && bClientId === myId) || (b.clientName && currentUser?.firstName && b.clientName.includes(currentUser.firstName));
-    });
+      const userBookings = allBookings.filter((b) => {
+        const bClientId = (b.clientId || b.client?._id || b.client)?.toString();
+        return (myId && bClientId === myId) || (b.clientName && currentUser?.firstName && b.clientName.includes(currentUser.firstName));
+      });
 
-    // User's quotes
-    const reqIdSet = new Set((userReqs.length > 0 ? userReqs : allReqs).map((r) => (r._id || r.id)?.toString()));
-    const userQuotes = allQuotes.filter((q) => {
-      const qReqId = (q.requestId || q.movingRequest?._id || q.movingRequest)?.toString();
-      return reqIdSet.has(qReqId);
-    });
+      // User's quotes
+      const reqIdSet = new Set((userReqs.length > 0 ? userReqs : allReqs).map((r) => (r._id || r.id)?.toString()));
+      const userQuotes = allQuotes.filter((q) => {
+        const qReqId = (q.requestId || q.movingRequest?._id || q.movingRequest)?.toString();
+        return !qReqId || reqIdSet.has(qReqId);
+      });
 
-    setRequests(userReqs.length > 0 ? userReqs : (allReqs.length > 0 ? allReqs : []));
-    setQuotes(userQuotes.length > 0 ? userQuotes : allQuotes);
-    setBookings(userBookings.length > 0 ? userBookings : (allBookings.length > 0 ? allBookings : []));
-    setLoading(false);
+      setRequests(userReqs.length > 0 ? userReqs : allReqs);
+      setQuotes(userQuotes.length > 0 ? userQuotes : allQuotes);
+      setBookings(userBookings.length > 0 ? userBookings : allBookings);
+    } catch (err) {
+      console.error("Erreur chargement données dashboard client:", err);
+    } finally {
+      setLoading(false);
+    }
   }
 
   useEffect(() => {
     loadData();
-    const unregister = onBookingUpdate("*", () => {
+    const unregisterBooking = onBookingUpdate?.("*", () => {
       loadData();
     });
-    return unregister;
-  }, [currentUser, onBookingUpdate]);
+    const unregisterQuote = onQuoteUpdate?.(() => {
+      loadData();
+    });
+    const unregisterRequest = onRequestUpdate?.(() => {
+      loadData();
+    });
+    return () => {
+      if (typeof unregisterBooking === "function") unregisterBooking();
+      if (typeof unregisterQuote === "function") unregisterQuote();
+      if (typeof unregisterRequest === "function") unregisterRequest();
+    };
+  }, [currentUser, onBookingUpdate, onQuoteUpdate, onRequestUpdate]);
 
   const nextBooking = bookings.find((b) => b.status === "confirmed") || bookings[0];
 

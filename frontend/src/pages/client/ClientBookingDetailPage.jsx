@@ -176,6 +176,14 @@ export function ClientBookingDetailPage() {
   const total = booking.totalAmount || booking.quote?.totalPrice || 0;
   const deposit = booking.depositAmount || booking.quote?.depositAmount || 0;
   const remaining = booking.remainingAmount || (total - deposit);
+  const depositPercent = (() => {
+    if (booking.quote?.depositPercent && Number(booking.quote.depositPercent) > 0) return Number(booking.quote.depositPercent);
+    if (booking.quote?.depositPercentage && Number(booking.quote.depositPercentage) > 0) return Number(booking.quote.depositPercentage);
+    if (booking.quote?.pricing?.depositPercentage && Number(booking.quote.pricing.depositPercentage) > 0) return Number(booking.quote.pricing.depositPercentage);
+    if (total > 0 && deposit > 0) return Math.round((deposit / total) * 100);
+    if (booking.depositPercent && Number(booking.depositPercent) > 0) return Number(booking.depositPercent);
+    return 30;
+  })();
   const date = booking.scheduledDate || req.preferredDate;
   const time = booking.scheduledTime || "08:00";
   const serviceStatus = booking.serviceStatus || "preparation";
@@ -235,10 +243,10 @@ export function ClientBookingDetailPage() {
             )}
             <span
               className={`text-xs font-bold px-3 py-1 rounded-full border ${serviceStatus === "completed"
-                  ? "bg-emerald-50 text-emerald-800 border-emerald-200"
-                  : serviceStatus === "in_progress"
-                    ? "bg-amber-50 text-amber-800 border-amber-200 animate-pulse"
-                    : "bg-blue-50 text-blue-800 border-blue-200"
+                ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+                : serviceStatus === "in_progress"
+                  ? "bg-amber-50 text-amber-800 border-amber-200 animate-pulse"
+                  : "bg-blue-50 text-blue-800 border-blue-200"
                 }`}
             >
               {serviceStatus === "completed"
@@ -394,7 +402,7 @@ export function ClientBookingDetailPage() {
                 className="px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center gap-2 transition-all shadow-md active:scale-95"
               >
                 <CreditCard className="w-4 h-4" />
-                <span>Payer l'acompte par carte virtuelle ({formatCurrency(deposit)}) ➔</span>
+                <span>Payer l'acompte ({depositPercent}%) par carte virtuelle ({formatCurrency(deposit)}) ➔</span>
               </button>
               <button
                 type="button"
@@ -447,8 +455,8 @@ export function ClientBookingDetailPage() {
             <div key={idx} className="relative flex items-start gap-4">
               <div
                 className={`absolute -left-6 w-5 h-5 rounded-full flex items-center justify-center ${s.done
-                    ? "bg-emerald-600 text-white ring-4 ring-emerald-50"
-                    : "bg-slate-200 ring-4 ring-white"
+                  ? "bg-emerald-600 text-white ring-4 ring-emerald-50"
+                  : "bg-slate-200 ring-4 ring-white"
                   }`}
               >
                 {s.done && <CheckCircle2 className="w-3.5 h-3.5" />}
@@ -588,7 +596,7 @@ export function ClientBookingDetailPage() {
             </div>
             <div className="flex justify-between items-center text-emerald-700 bg-emerald-50 p-2 rounded-xl">
               <span>
-                Acompte réglé en ligne ({booking.quote?.depositPercent || booking.depositPercent || (total > 0 ? Math.round((deposit / total) * 100) : 30)}%) :
+                Acompte réglé en ligne ({depositPercent}%) :
               </span>
               <strong className="font-bold">{formatCurrency(deposit)} (Sécurisé)</strong>
             </div>

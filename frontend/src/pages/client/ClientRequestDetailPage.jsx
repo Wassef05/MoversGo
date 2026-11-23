@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useParams, Link, useLocation } from "react-router-dom";
 import { requestService } from "../../services/api/requestService";
 import { quoteService } from "../../services/api/quoteService";
+import { useNotifications } from "../../contexts/NotificationContext";
 import { StatusBadge } from "../../components/common/StatusBadge";
 import { RatingStars } from "../../components/common/RatingStars";
 import { formatCurrency, formatDate } from "../../utils/cn";
@@ -31,6 +32,7 @@ import {
 export function ClientRequestDetailPage() {
   const { id } = useParams();
   const location = useLocation();
+  const { onQuoteUpdate } = useNotifications();
   const [request, setRequest] = useState(null);
   const [quotes, setQuotes] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -38,39 +40,46 @@ export function ClientRequestDetailPage() {
 
   const backendUrl = (import.meta.env.VITE_API_URL || "http://localhost:5000/api/v1").replace(/\/api\/v1\/?$/, "");
 
-  useEffect(() => {
-    async function load() {
-      setLoading(true);
-      setError(null);
+  const load = async (silent = false) => {
+    if (!silent) setLoading(true);
+    setError(null);
+    try {
+      let reqData = null;
       try {
-        let reqData = null;
-        try {
-          const res = await requestService.getRequestById(id);
-          const raw = res?.request || res?.movingRequest || res?.data?.request || res?.data?.movingRequest || res?.data || res;
-          reqData = raw?.request || raw;
-        } catch (e) {
-          console.error("Erreur getRequestById:", e);
-        }
-
-        let quoteList = [];
-        try {
-          const resQuotes = await quoteService.getClientQuotes({ movingRequestId: id, limit: 100 });
-          quoteList = resQuotes?.data || (Array.isArray(resQuotes) ? resQuotes : []);
-        } catch (e) {
-          console.error("Erreur getClientQuotes:", e);
-        }
-
-        setRequest(reqData);
-        setQuotes(quoteList || []);
-      } catch (err) {
-        console.error("Error loading request details:", err);
-        setError("Impossible de charger les détails de cette demande.");
-      } finally {
-        setLoading(false);
+        const res = await requestService.getRequestById(id);
+        const raw = res?.request || res?.movingRequest || res?.data?.request || res?.data?.movingRequest || res?.data || res;
+        reqData = raw?.request || raw;
+      } catch (e) {
+        console.error("Erreur getRequestById:", e);
       }
+
+      let quoteList = [];
+      try {
+        const resQuotes = await quoteService.getClientQuotes({ movingRequestId: id, limit: 100 });
+        quoteList = resQuotes?.data || (Array.isArray(resQuotes) ? resQuotes : []);
+      } catch (e) {
+        console.error("Erreur getClientQuotes:", e);
+      }
+
+      setRequest(reqData);
+      setQuotes(quoteList || []);
+    } catch (err) {
+      console.error("Error loading request details:", err);
+      if (!silent) setError("Impossible de charger les détails de cette demande.");
+    } finally {
+      if (!silent) setLoading(false);
     }
+  };
+
+  useEffect(() => {
     load();
-  }, [id]);
+    const unregister = onQuoteUpdate?.(() => {
+      load(true);
+    });
+    return () => {
+      if (typeof unregister === "function") unregister();
+    };
+  }, [id, onQuoteUpdate]);
 
   const fmtFullAddress = (addr) => {
     if (!addr) return "Coordonnées non spécifiées";

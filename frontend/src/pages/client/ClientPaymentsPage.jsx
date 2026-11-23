@@ -511,7 +511,17 @@ export function ClientPaymentsPage() {
       <PaymentReceiptModal
         isOpen={!!selectedReceiptBooking}
         onClose={() => setSelectedReceiptBooking(null)}
-        booking={selectedReceiptBooking}
+        booking={
+          selectedReceiptBooking
+            ? {
+              ...selectedReceiptBooking,
+              client:
+                selectedReceiptBooking.client?.firstName
+                  ? selectedReceiptBooking.client
+                  : { ...user, ...selectedReceiptBooking.client },
+            }
+            : null
+        }
       />
 
       {/* ── Invoice Modal ── */}

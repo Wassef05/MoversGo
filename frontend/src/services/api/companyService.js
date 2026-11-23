@@ -46,5 +46,11 @@ export const companyService = {
     const res = await apiClient.delete(`/companies/me/documents/${docId}`);
     return res.data;
   },
+
+  async getCompanyStatistics() {
+    const res = await apiClient.get("/companies/statistics");
+    const payload = res?.overview ? res : (res?.data !== undefined ? res.data : res);
+    return payload;
+  },
 };
 

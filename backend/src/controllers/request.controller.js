@@ -144,7 +144,7 @@ const createRequest = catchAsync(async (req, res) => {
     'firstName lastName phone email'
   );
 
-  // Smart Recommendation Notification: Notify companies whose profile matches this new request
+  // Smart Recommendation Notification: Notify companies about this new moving request
   const recommendationService = require('../services/recommendation.service');
   let matchedCompanies = [];
   try {
@@ -153,32 +153,38 @@ const createRequest = catchAsync(async (req, res) => {
     console.warn('Smart matching evaluation warning:', matchErr.message);
   }
 
-  // If no specific high-match companies found, fallback to active approved companies in area
-  let companiesToNotify = matchedCompanies.map((m) => m.company);
-  if (companiesToNotify.length === 0) {
-    companiesToNotify = await Company.find({
-      verificationStatus: 'approved',
-      isActive: true,
-    }).populate('user', 'email firstName lastName');
+  // Get all active companies so no mover is left out of opportunities
+  let allActiveCompanies = await Company.find({
+    isActive: true,
+  }).populate('user', 'email firstName lastName');
 
-    if (companiesToNotify.length === 0) {
-      companiesToNotify = await Company.find({ isActive: true }).populate('user', 'email firstName lastName');
+  if (allActiveCompanies.length === 0) {
+    allActiveCompanies = await Company.find({}).populate('user', 'email firstName lastName');
+  }
+
+  // Deduplicate and prepare recipients
+  const seenUserIds = new Set();
+  const companiesToNotify = [];
+  for (const comp of allActiveCompanies) {
+    const uId = comp.user?._id?.toString() || (typeof comp.user === 'string' ? comp.user : null);
+    if (uId && !seenUserIds.has(uId)) {
+      seenUserIds.add(uId);
+      companiesToNotify.push(comp);
     }
   }
 
   if (companiesToNotify.length > 0) {
-    const { getUnreadCount } = require('../services/notification.service');
+    const { createNotification } = require('../services/notification.service');
     const { sendEmail, templates } = require('../services/email.service');
     const io = req.app.get('io');
-    const mongoose = require('mongoose');
 
-    // Create tailored notifications
-    const notifDocs = [];
     for (const comp of companiesToNotify) {
       const userId = comp.user?._id || comp.user;
       if (!userId) continue;
 
-      const matchMeta = matchedCompanies.find((m) => String(m.company._id) === String(comp._id));
+      const matchMeta = matchedCompanies.find(
+        (m) => String(m.company?._id || m.company) === String(comp._id)
+      );
       const score = matchMeta?.score;
       const dist = matchMeta?.distanceKm;
 
@@ -191,63 +197,43 @@ const createRequest = catchAsync(async (req, res) => {
         ? `Ce déménagement de ${parsedDeparture.city} vers ${parsedArrival.city}${distanceTxt} correspond parfaitement à votre profil et vos services.`
         : `Nouvelle opportunité : trajet de ${parsedDeparture.city} vers ${parsedArrival.city} (${parsedDeparture.governorate})`;
 
-      notifDocs.push({
-        recipient: userId,
+      // Create persistent notification and emit real-time event to this company user
+      await createNotification({
+        recipientId: userId,
         title,
         message,
         type: 'new_request',
-        relatedEntity: {
-          entityType: 'request',
-          entityId: populatedRequest._id,
-          link: `/company/requests/${populatedRequest._id}`,
+        entityType: 'request',
+        entityId: populatedRequest._id,
+        link: `/company/requests/${populatedRequest._id}`,
+        io,
+        meta: {
+          requestId: String(populatedRequest._id),
+          departureCity: parsedDeparture.city,
+          arrivalCity: parsedArrival.city,
+          score: score || null,
         },
       });
     }
 
-    if (notifDocs.length > 0) {
-      let createdNotifs = [];
-      try {
-        createdNotifs = await Notification.insertMany(notifDocs);
-      } catch (err) {
-        console.error('Error creating company notifications:', err.message);
-      }
+    // Broadcast request:new globally and to role:company so all open dashboards/request lists update immediately
+    if (io) {
+      io.to('role:company').emit('request:new', {
+        request: populatedRequest,
+        requestId: String(populatedRequest._id),
+      });
+      io.emit('request:new', {
+        request: populatedRequest,
+        requestId: String(populatedRequest._id),
+      });
+    }
 
-      if (io) {
-        for (let i = 0; i < companiesToNotify.length; i++) {
-          const comp = companiesToNotify[i];
-          const userId = comp.user?._id || comp.user;
-          if (!userId) continue;
+    // Send email notifications to companies with complete coordinates & direct dashboard link
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+    const directUrl = `${frontendUrl}/company/requests/${populatedRequest._id}`;
+    const dashboardUrl = `${frontendUrl}/company/dashboard`;
 
-          const notif = createdNotifs[i] || notifDocs[i];
-          const notifObj = notif && notif.toObject ? notif.toObject() : {
-            ...notif,
-            _id: (notif && notif._id) ? notif._id : new mongoose.Types.ObjectId(),
-          };
-
-          const unread = await getUnreadCount(userId).catch(() => 1);
-
-          // Emit real-time notification with full document & unreadCount
-          io.to(`user:${userId.toString()}`).emit('notification:new', {
-            notification: notifObj,
-            unreadCount: unread,
-            type: 'new_request',
-            requestId: String(populatedRequest._id),
-          });
-
-          // Also emit request:new event so request list pages and dashboards update instantly
-          io.to(`user:${userId.toString()}`).emit('request:new', {
-            request: populatedRequest,
-            requestId: String(populatedRequest._id),
-          });
-        }
-      }
-
-      // Send email notifications to companies with complete coordinates & direct dashboard link
-      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
-      const directUrl = `${frontendUrl}/company/requests/${populatedRequest._id}`;
-      const dashboardUrl = `${frontendUrl}/company/dashboard`;
-
-      for (const comp of companiesToNotify) {
+    for (const comp of companiesToNotify) {
         const targetEmail = comp.email || comp.user?.email;
         if (!targetEmail) continue;
 
@@ -273,7 +259,6 @@ const createRequest = catchAsync(async (req, res) => {
         });
       }
     }
-  }
 
   return created(res, { request: populatedRequest }, 'Demande de déménagement créée avec succès');
 });

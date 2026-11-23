@@ -48,6 +48,15 @@ const createNotification = async ({
           meta: meta || null,
         });
       }
+
+      // Also emit a focused quote event so client dashboards and quote pages reload immediately
+      if ((entityType === 'quote' || type === 'new_quote') && entityId) {
+        io.to(targetRoom).emit('quote:new', {
+          quoteId: String(entityId),
+          type,
+          meta: meta || null,
+        });
+      }
     }
 
     return notification;

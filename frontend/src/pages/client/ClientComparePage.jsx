@@ -199,7 +199,8 @@ export function ClientComparePage() {
             const compRating = company.averageRating || 5;
             const compReviews = company.totalReviews || 0;
             const total = q.totalPrice || 0;
-            const deposit = q.depositAmount || Math.round(total * 0.3);
+            const pct = q.depositPercent || q.depositPercentage || q.pricing?.depositPercentage || (total > 0 && q.depositAmount ? Math.round((q.depositAmount / total) * 100) : 30);
+            const deposit = q.depositAmount || Math.round(total * (pct / 100));
             const isBestPrice = total === minPrice && validQuotes.length > 1;
             const isAccepted = q.status === "accepted";
             const isAccepting = acceptingQuoteId === quoteId;
@@ -210,10 +211,10 @@ export function ClientComparePage() {
               <div
                 key={quoteId}
                 className={`bg-white rounded-3xl border flex flex-col justify-between transition-all relative overflow-hidden ${isAccepted
-                    ? "border-emerald-500 ring-2 ring-emerald-500/20 shadow-md"
-                    : isBestPrice
-                      ? "border-brand-500 shadow-xl ring-2 ring-brand-500/20"
-                      : "border-slate-200/90 shadow-subtle hover:shadow-card"
+                  ? "border-emerald-500 ring-2 ring-emerald-500/20 shadow-md"
+                  : isBestPrice
+                    ? "border-brand-500 shadow-xl ring-2 ring-brand-500/20"
+                    : "border-slate-200/90 shadow-subtle hover:shadow-card"
                   }`}
               >
                 {isBestPrice && !isAccepted && (
@@ -273,7 +274,7 @@ export function ClientComparePage() {
                       {formatCurrency(total)}
                     </span>
                     <span className="text-xs text-slate-500 block mt-0.5 font-medium">
-                      Acompte ({q.depositPercent || 30}%) : {formatCurrency(deposit)}
+                      Acompte ({pct}%) : {formatCurrency(deposit)}
                     </span>
                   </div>
 
@@ -342,8 +343,8 @@ export function ClientComparePage() {
                     const servicesList = Array.isArray(q.includedServices)
                       ? q.includedServices
                       : typeof q.includedServices === "string"
-                      ? q.includedServices.split(",").map((s) => s.trim()).filter(Boolean)
-                      : [];
+                        ? q.includedServices.split(",").map((s) => s.trim()).filter(Boolean)
+                        : [];
                     if (servicesList.length === 0) return null;
                     return (
                       <div className="pt-3 border-t border-slate-100 space-y-2">
@@ -378,8 +379,8 @@ export function ClientComparePage() {
                       disabled={isAccepting || Boolean(successInfo)}
                       onClick={() => handleAcceptOffer(quoteId)}
                       className={`w-full py-3.5 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all ${isBestPrice
-                          ? "bg-brand-600 text-white hover:bg-brand-700 shadow-brand"
-                          : "bg-slate-900 text-white hover:bg-slate-800"
+                        ? "bg-brand-600 text-white hover:bg-brand-700 shadow-brand"
+                        : "bg-slate-900 text-white hover:bg-slate-800"
                         } disabled:opacity-50`}
                     >
                       {isAccepting ? (

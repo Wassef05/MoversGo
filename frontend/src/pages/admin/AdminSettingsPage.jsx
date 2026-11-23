@@ -174,8 +174,8 @@ export function AdminSettingsPage() {
           type="button"
           onClick={() => handleTabChange("profile")}
           className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer ${activeTab === "profile"
-              ? "bg-[#800020] text-white shadow-md border-2 border-white"
-              : "text-slate-600 hover:text-slate-900"
+            ? "bg-[#800020] text-white shadow-md border-2 border-white"
+            : "text-slate-600 hover:text-slate-900"
             }`}
         >
           <User className="w-4 h-4" />
@@ -186,8 +186,8 @@ export function AdminSettingsPage() {
           type="button"
           onClick={() => handleTabChange("system")}
           className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer ${activeTab === "system"
-              ? "bg-slate-900 text-white shadow-md border-2 border-white"
-              : "text-slate-600 hover:text-slate-900"
+            ? "bg-slate-900 text-white shadow-md border-2 border-white"
+            : "text-slate-600 hover:text-slate-900"
             }`}
         >
           <Sliders className="w-4 h-4" />

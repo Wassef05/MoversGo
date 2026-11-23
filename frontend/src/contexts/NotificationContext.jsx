@@ -95,6 +95,9 @@ export function NotificationProvider({ children }) {
   // Marketplace request listeners: Set<callback>
   const requestListenersRef = useRef(new Set());
 
+  // Quote listeners: Set<callback>
+  const quoteListenersRef = useRef(new Set());
+
   const fetchNotifications = useCallback(async () => {
     if (!currentUser) {
       setNotifications([]);
@@ -154,6 +157,19 @@ export function NotificationProvider({ children }) {
     };
   }, []);
 
+  /**
+   * Register a callback for real-time quote reception and updates.
+   * Called by ClientDashboardPage / ClientQuotesPage / ClientRequestDetailPage.
+   * Returns an unregister function to call on unmount.
+   */
+  const onQuoteUpdate = useCallback((callback) => {
+    if (typeof callback !== "function") return () => {};
+    quoteListenersRef.current.add(callback);
+    return () => {
+      quoteListenersRef.current.delete(callback);
+    };
+  }, []);
+
   useEffect(() => {
     if (!currentUser) {
       setNotifications([]);
@@ -208,6 +224,39 @@ export function NotificationProvider({ children }) {
           bookingId: relBookingId,
           type: notif.type,
           meta: notif.meta,
+        });
+      }
+
+      // Instantly trigger request listeners if this notification relates to a new request
+      if (notif.type === "new_request") {
+        handleRequestNew({
+          request: notif.relatedEntity || null,
+          requestId:
+            notif.meta?.requestId ||
+            notif.relatedEntity?.entityId ||
+            notif.requestId ||
+            null,
+        });
+      }
+
+      // Instantly trigger quote listeners if this notification relates to a quote
+      if (
+        notif.type === "new_quote" ||
+        notif.relatedEntity?.entityType === "quote" ||
+        notif.entityType === "quote"
+      ) {
+        handleQuoteNew({
+          quoteId:
+            notif.meta?.quoteId ||
+            notif.relatedEntity?.entityId ||
+            notif.entityId ||
+            null,
+          requestId:
+            notif.meta?.requestId ||
+            notif.relatedEntity?.requestId ||
+            null,
+          quote: notif.quote || null,
+          type: notif.type,
         });
       }
 
@@ -312,15 +361,27 @@ export function NotificationProvider({ children }) {
       }
     };
 
+    // ── quote:new ───────────────────────────────────────────────────
+    // Dispatched when a company submits a new quote for a client's request
+    const handleQuoteNew = (data) => {
+      if (quoteListenersRef.current.size > 0) {
+        quoteListenersRef.current.forEach((cb) => {
+          try { cb(data); } catch (_) {}
+        });
+      }
+    };
+
     socket.on("notification:new", handleNewNotification);
     socket.on("booking:updated", handleBookingUpdated);
     socket.on("request:new", handleRequestNew);
+    socket.on("quote:new", handleQuoteNew);
     socket.on("connect", fetchNotifications);
 
     return () => {
       socket.off("notification:new", handleNewNotification);
       socket.off("booking:updated", handleBookingUpdated);
       socket.off("request:new", handleRequestNew);
+      socket.off("quote:new", handleQuoteNew);
       socket.off("connect", fetchNotifications);
     };
   }, [currentUser, fetchNotifications]);
@@ -361,6 +422,7 @@ export function NotificationProvider({ children }) {
         refreshNotifications: fetchNotifications,
         onBookingUpdate,
         onRequestUpdate,
+        onQuoteUpdate,
         playNotificationSound: playNotificationChime,
       }}
     >

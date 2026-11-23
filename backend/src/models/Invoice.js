@@ -108,6 +108,20 @@ const invoiceSchema = new mongoose.Schema(
       default: 'card',
     },
 
+    // Platform commission breakdown
+    depositCommissionRate: {
+      type: Number,
+      default: 0.02,
+    },
+    depositCommissionAmount: {
+      type: Number,
+      default: 0,
+    },
+    depositNetToCompany: {
+      type: Number,
+      default: 0,
+    },
+
     // Status of double digital signatures
     status: {
       type: String,

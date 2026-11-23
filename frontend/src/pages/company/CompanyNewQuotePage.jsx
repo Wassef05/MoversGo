@@ -470,6 +470,36 @@ export function CompanyNewQuotePage() {
             <p className="mt-2 text-[11px] text-slate-400">
               Montant de l'acompte : <span className="font-bold text-brand-600">{formatCurrency(depositCalculated)} TND</span> ({depositPercent}% de {formatCurrency(totalCalculated)})
             </p>
+
+            {/* Transparence financière commission MoversGo */}
+            <div className="mt-3 p-3.5 rounded-2xl bg-slate-50 border border-slate-200 text-xs space-y-2">
+              <div className="flex items-center justify-between text-slate-700">
+                <span className="font-semibold flex items-center gap-1.5">
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                  Transparence financière MoversGo :
+                </span>
+                <span className="font-mono text-[11px] font-bold text-brand-700 bg-brand-50 px-2 py-0.5 rounded-full border border-brand-200">
+                  {(depositPercent / 10) * 2}% com. sur TTC
+                </span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 text-[11px]">
+                <div className="p-2 rounded-xl bg-white border border-slate-100 flex items-center justify-between">
+                  <span className="text-slate-500">Net reçu par votre société (acompte) :</span>
+                  <strong className="text-emerald-700 font-bold">
+                    {formatCurrency(Math.round(depositCalculated * 0.8))} TND ({depositPercent - (depositPercent / 10) * 2}% TTC)
+                  </strong>
+                </div>
+                <div className="p-2 rounded-xl bg-white border border-slate-100 flex items-center justify-between">
+                  <span className="text-slate-500">Commission plateforme administrative :</span>
+                  <strong className="text-brand-700 font-bold">
+                    {formatCurrency(Math.round(depositCalculated * 0.2))} TND ({(depositPercent / 10) * 2}% TTC)
+                  </strong>
+                </div>
+              </div>
+              <p className="text-[10px] text-slate-400 italic">
+                * Règle de transparence : l'administration retient 2% du Total TTC pour chaque tranche de 10% d'acompte (ex: 10% acompte = 8% net entreprise + 2% commission plateforme). Le solde restant ({100 - depositPercent}% TTC) revient à 100% à votre entreprise.
+              </p>
+            </div>
           </div>
         </div>
 

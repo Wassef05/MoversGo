@@ -15,6 +15,8 @@ const ctrl = (name) => (req, res, next) => {
 // Public
 router.get('/', optionalAuth, ctrl('getPublicCompanies'));
 router.get('/me', protect, authorize('company'), ctrl('getMyCompanyProfile'));
+router.get('/statistics', protect, authorize('company'), ctrl('getCompanyStats'));
+router.get('/me/statistics', protect, authorize('company'), ctrl('getCompanyStats'));
 router.get('/:id', optionalAuth, ctrl('getPublicCompanyById'));
 
 // Company profile management

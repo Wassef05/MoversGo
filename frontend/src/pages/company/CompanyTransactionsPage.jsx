@@ -199,21 +199,19 @@ export function CompanyTransactionsPage() {
         <div className="flex border-b border-gray-100 px-6 pt-4">
           <button
             onClick={() => setActiveTab('received')}
-            className={`relative mr-6 pb-3 text-sm font-medium transition-colors cursor-pointer ${
-              activeTab === 'received'
+            className={`relative mr-6 pb-3 text-sm font-medium transition-colors cursor-pointer ${activeTab === 'received'
                 ? 'text-brand-600 font-bold'
                 : 'text-gray-400 hover:text-gray-600'
-            }`}
+              }`}
           >
             <span className="flex items-center gap-2">
               <Receipt size={15} />
               Acomptes reçus
               <span
-                className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
-                  activeTab === 'received'
+                className={`rounded-full px-2 py-0.5 text-xs font-semibold ${activeTab === 'received'
                     ? 'bg-emerald-100 text-emerald-700'
                     : 'bg-gray-100 text-gray-500'
-                }`}
+                  }`}
               >
                 {depositReceived.length}
               </span>
@@ -225,21 +223,19 @@ export function CompanyTransactionsPage() {
 
           <button
             onClick={() => setActiveTab('pending')}
-            className={`relative pb-3 text-sm font-medium transition-colors cursor-pointer ${
-              activeTab === 'pending'
+            className={`relative pb-3 text-sm font-medium transition-colors cursor-pointer ${activeTab === 'pending'
                 ? 'text-brand-600 font-bold'
                 : 'text-gray-400 hover:text-gray-600'
-            }`}
+              }`}
           >
             <span className="flex items-center gap-2">
               <Hourglass size={15} />
               En attente de règlement
               <span
-                className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
-                  activeTab === 'pending'
+                className={`rounded-full px-2 py-0.5 text-xs font-semibold ${activeTab === 'pending'
                     ? 'bg-amber-100 text-amber-700'
                     : 'bg-gray-100 text-gray-500'
-                }`}
+                  }`}
               >
                 {pendingSettlement.length}
               </span>
@@ -252,7 +248,20 @@ export function CompanyTransactionsPage() {
 
         {/* ── Tab: Acomptes reçus ── */}
         {activeTab === 'received' && (
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto p-4 sm:p-6 space-y-4">
+            {/* Bannière Transparence Financière */}
+            <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 text-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5">
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span className="text-slate-700">
+                  <strong>Transparence financière :</strong> La commission plateforme est de <strong>2% du TTC par tranche de 10% d'acompte</strong> (ex: acompte 10% = 8% net entreprise + 2% com. plateforme ; 20% = 16% net + 4% com.). Le solde restant vous revient à 100%.
+                </span>
+              </div>
+              <span className="font-mono text-[11px] font-bold text-brand-700 bg-brand-50 px-2.5 py-1 rounded-full border border-brand-200 shrink-0">
+                Transparence MoversGo
+              </span>
+            </div>
+
             {loading ? (
               <div className="py-16 text-center text-xs text-slate-400">
                 Chargement des transactions...
@@ -267,25 +276,33 @@ export function CompanyTransactionsPage() {
               <table className="w-full text-xs">
                 <thead>
                   <tr className="border-b border-gray-100 bg-gray-50/60 font-semibold uppercase tracking-wide text-gray-400">
-                    <th className="px-6 py-3.5 text-left">Réf. Réservation</th>
-                    <th className="px-6 py-3.5 text-left">Client</th>
-                    <th className="px-6 py-3.5 text-left">Date de paiement</th>
-                    <th className="px-6 py-3.5 text-center">Taux Acompte</th>
-                    <th className="px-6 py-3.5 text-right">Montant acompte</th>
-                    <th className="px-6 py-3.5 text-left">Méthode</th>
-                    <th className="px-6 py-3.5 text-right">Reste à recevoir</th>
-                    <th className="px-6 py-3.5 text-right">Documents</th>
+                    <th className="px-4 py-3.5 text-left">Réf. Réservation</th>
+                    <th className="px-4 py-3.5 text-left">Client</th>
+                    <th className="px-4 py-3.5 text-left">Date paiement</th>
+                    <th className="px-4 py-3.5 text-center">Taux Acompte</th>
+                    <th className="px-4 py-3.5 text-right">Acompte Brut</th>
+                    <th className="px-4 py-3.5 text-right">Com. MoversGo</th>
+                    <th className="px-4 py-3.5 text-right">Net Reçu</th>
+                    <th className="px-4 py-3.5 text-left">Méthode</th>
+                    <th className="px-4 py-3.5 text-right">Solde Jour J</th>
+                    <th className="px-4 py-3.5 text-right">Documents</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50 text-slate-700">
                   {depositReceived.map((b) => {
                     const pct = getDepositPercent(b);
+                    const depAmt = b.depositAmount ?? 0;
+                    const feeAmt = b.platformFee ?? Math.round(depAmt * 0.2);
+                    const netAmt = b.netToCompany ?? Math.max(0, depAmt - feeAmt);
+                    const commPctTTC = (pct / 10) * 2;
+                    const netPctTTC = pct - commPctTTC;
+
                     return (
                       <tr
                         key={b._id}
                         className="transition-colors hover:bg-gray-50/70"
                       >
-                        <td className="px-6 py-4 font-mono font-bold text-gray-900">
+                        <td className="px-4 py-4 font-mono font-bold text-gray-900">
                           <Link
                             to={`/company/bookings/${b._id}`}
                             className="hover:text-brand-600 underline"
@@ -293,26 +310,42 @@ export function CompanyTransactionsPage() {
                             {shortRef(b._id)}
                           </Link>
                         </td>
-                        <td className="px-6 py-4">
+                        <td className="px-4 py-4">
                           <p className="font-semibold text-gray-800">{clientName(b)}</p>
                           {b.client?.phone && (
                             <p className="text-[11px] text-gray-400">{b.client.phone}</p>
                           )}
                         </td>
-                        <td className="px-6 py-4 text-gray-600">
+                        <td className="px-4 py-4 text-gray-600">
                           {b.depositPaidAt ? formatDate(b.depositPaidAt) : '—'}
                         </td>
-                        <td className="px-6 py-4 text-center">
+                        <td className="px-4 py-4 text-center">
                           <span className="inline-block px-2 py-0.5 rounded-full bg-brand-50 text-brand-700 font-bold border border-brand-200">
                             {pct}%
                           </span>
                         </td>
-                        <td className="px-6 py-4 text-right">
-                          <span className="font-bold text-emerald-700 text-sm">
-                            {formatCurrency(b.depositAmount ?? 0)} TND
+                        <td className="px-4 py-4 text-right">
+                          <span className="font-bold text-slate-900 text-sm">
+                            {formatCurrency(depAmt)} TND
                           </span>
                         </td>
-                        <td className="px-6 py-4">
+                        <td className="px-4 py-4 text-right">
+                          <span className="font-bold text-brand-700">
+                            -{formatCurrency(feeAmt)} TND
+                          </span>
+                          <span className="block text-[10px] text-slate-400">
+                            {commPctTTC}% TTC
+                          </span>
+                        </td>
+                        <td className="px-4 py-4 text-right">
+                          <span className="font-bold text-emerald-700 text-sm">
+                            +{formatCurrency(netAmt)} TND
+                          </span>
+                          <span className="block text-[10px] text-emerald-600 font-semibold">
+                            {netPctTTC}% TTC
+                          </span>
+                        </td>
+                        <td className="px-4 py-4">
                           <span className="inline-flex items-center gap-1 font-medium text-gray-600">
                             {b.requestedPaymentMode === 'virement' ? (
                               <CreditCard size={13} className="text-blue-500" />
@@ -322,7 +355,7 @@ export function CompanyTransactionsPage() {
                             {paymentMethodLabel(b.requestedPaymentMode)}
                           </span>
                         </td>
-                        <td className="px-6 py-4 text-right">
+                        <td className="px-4 py-4 text-right">
                           {b.paymentStatus === 'fully_paid' ? (
                             <span className="font-bold text-emerald-600">Soldé 100%</span>
                           ) : (
@@ -331,7 +364,7 @@ export function CompanyTransactionsPage() {
                             </span>
                           )}
                         </td>
-                        <td className="px-6 py-4 text-right">
+                        <td className="px-4 py-4 text-right">
                           <div className="flex items-center justify-end gap-1.5">
                             <button
                               type="button"

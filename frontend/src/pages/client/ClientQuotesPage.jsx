@@ -1,32 +1,40 @@
 import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { quoteService } from "../../services/api/quoteService";
+import { useNotifications } from "../../contexts/NotificationContext";
 import { StatusBadge } from "../../components/common/StatusBadge";
 import { RatingStars } from "../../components/common/RatingStars";
 import { formatCurrency, formatDate, getLogoUrl } from "../../utils/cn";
 import { Scale, Eye, Building2, FileText, RefreshCw, MapPin, ArrowRight } from "lucide-react";
 
 export function ClientQuotesPage() {
+  const { onQuoteUpdate } = useNotifications();
   const [quotes, setQuotes] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  const fetchQuotes = async () => {
-    setLoading(true);
+  const fetchQuotes = async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const res = await quoteService.getClientQuotes({ limit: 100 });
       const list = res?.data || (Array.isArray(res) ? res : []);
       setQuotes(Array.isArray(list) ? list : []);
     } catch (err) {
       console.error("Erreur chargement devis:", err);
-      setQuotes([]);
+      if (!silent) setQuotes([]);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
   useEffect(() => {
     fetchQuotes();
-  }, []);
+    const unregister = onQuoteUpdate?.(() => {
+      fetchQuotes(true);
+    });
+    return () => {
+      if (typeof unregister === "function") unregister();
+    };
+  }, [onQuoteUpdate]);
 
   return (
     <div className="space-y-6">
@@ -90,7 +98,8 @@ export function ClientQuotesPage() {
               const arrCity = movingReq.arrivalAddress?.city || "—";
               const requestTitle = movingReq.title || `Déménagement ${depCity} → ${arrCity}`;
               const total = q.totalPrice || 0;
-              const deposit = q.depositAmount || Math.round(total * 0.3);
+              const pct = q.depositPercent || q.depositPercentage || q.pricing?.depositPercentage || (total > 0 && q.depositAmount ? Math.round((q.depositAmount / total) * 100) : 30);
+              const deposit = q.depositAmount || Math.round(total * (pct / 100));
               const validDate = q.validityDate;
 
               return (
@@ -147,7 +156,7 @@ export function ClientQuotesPage() {
                         {formatCurrency(total)}
                       </span>
                       <span className="text-[11px] text-slate-500 block font-medium">
-                        Acompte ({q.depositPercent || 30}%) : {formatCurrency(deposit)}
+                        Acompte ({pct}%) : {formatCurrency(deposit)}
                       </span>
                     </div>
 

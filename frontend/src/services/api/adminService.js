@@ -3,7 +3,7 @@ import { apiClient } from "./apiClient";
 export const adminService = {
   async getDashboardStats() {
     const res = await apiClient.get("/admin/dashboard");
-    return res.data;
+    return res?.stats ? res : (res?.data !== undefined ? res.data : res);
   },
 
   async getAllUsers(params = {}) {
@@ -33,7 +33,7 @@ export const adminService = {
 
   async getPendingCompanies() {
     const res = await apiClient.get("/admin/companies/pending");
-    return res.data;
+    return res?.companies ? res : (res?.data !== undefined ? res.data : res);
   },
 
   async approveCompany(id) {
@@ -58,17 +58,17 @@ export const adminService = {
 
   async getAllRequests(params = {}) {
     const res = await apiClient.get("/admin/requests", { params });
-    return res.data;
+    return res?.data !== undefined ? res.data : res;
   },
 
   async getAllQuotes(params = {}) {
     const res = await apiClient.get("/admin/quotes", { params });
-    return res.data;
+    return res?.data !== undefined ? res.data : res;
   },
 
   async getAllBookings(params = {}) {
     const res = await apiClient.get("/admin/bookings", { params });
-    return res.data;
+    return res?.data !== undefined ? res.data : res;
   },
 
   async getAllReviews(params = {}) {
@@ -83,7 +83,8 @@ export const adminService = {
 
   async getTransactions(params = {}) {
     const res = await apiClient.get("/admin/transactions", { params });
-    return res.data;
+    const payload = Array.isArray(res) ? res : (Array.isArray(res?.data) ? res.data : (res?.transactions || res?.data || res));
+    return payload;
   },
 
   async getAllTickets(params = {}) {

@@ -74,7 +74,8 @@ export function CompanyQuotesPage() {
               const requestTitle = movingReq.title || `Déménagement ${depCity} ➔ ${arrCity}`;
               const validDate = q.validityDate;
               const total = q.totalPrice || 0;
-              const deposit = q.depositAmount || Math.round(total * 0.3);
+              const pct = q.depositPercent || q.depositPercentage || q.pricing?.depositPercentage || (total > 0 && q.depositAmount ? Math.round((q.depositAmount / total) * 100) : 30);
+              const deposit = q.depositAmount || Math.round(total * (pct / 100));
 
               return (
                 <div
@@ -104,7 +105,7 @@ export function CompanyQuotesPage() {
                         {formatCurrency(total)}
                       </span>
                       <span className="text-[11px] text-slate-400 block font-medium">
-                        Acompte ({q.depositPercent || 30}%) : {formatCurrency(deposit)}
+                        Acompte ({pct}%) : {formatCurrency(deposit)}
                       </span>
                     </div>
 

@@ -33,6 +33,11 @@ const initSocket = (io) => {
     // Join personal room for notifications
     socket.join(`user:${userId}`);
 
+    // Join role-based room (e.g. role:company, role:client, role:admin)
+    if (socket.user.role) {
+      socket.join(`role:${socket.user.role}`);
+    }
+
     // Join conversation rooms
     socket.on('join:conversation', (conversationId) => {
       socket.join(`conversation:${conversationId}`);

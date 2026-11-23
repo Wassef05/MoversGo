@@ -46,29 +46,50 @@ import {
 
 export function CompanyDashboardPage() {
   const { currentUser } = useAuth();
-  const { onBookingUpdate, onRequestUpdate } = useNotifications();
+  const { onBookingUpdate, onRequestUpdate, onQuoteUpdate } = useNotifications();
   const [requests, setRequests] = useState([]);
   const [recommendedRequests, setRecommendedRequests] = useState([]);
   const [quotes, setQuotes] = useState([]);
   const [bookings, setBookings] = useState([]);
   const [companyProfile, setCompanyProfile] = useState(null);
+  const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [uploadingRne, setUploadingRne] = useState(false);
   const [sendingReminderId, setSendingReminderId] = useState(null);
 
   const loadData = async () => {
     try {
-      const [reqRes, recRes, quoteRes, bookRes, profileRes] = await Promise.all([
+      const [reqRes, recRes, quoteRes, bookRes, profileRes, statsRes] = await Promise.all([
         requestService.getAvailableRequests().catch(() => ({ data: [] })),
         recommendationService.getCompanyRecommendations({ limit: 4, sortBy: "score" }).catch(() => ({ recommendations: [] })),
         quoteService.getMyQuotes().catch(() => ({ data: [] })),
         bookingService.getCompanyBookings({ limit: 20 }).catch(() => ({ data: [] })),
         companyService.getMyProfile().catch(() => null),
+        companyService.getCompanyStatistics().catch(() => null),
       ]);
 
-      const reqList = Array.isArray(reqRes?.data) ? reqRes.data : [];
-      const recList = Array.isArray(recRes?.recommendations) ? recRes.recommendations : [];
-      const quoteList = Array.isArray(quoteRes?.data) ? quoteRes.data : [];
+      const reqList = Array.isArray(reqRes)
+        ? reqRes
+        : Array.isArray(reqRes?.data)
+          ? reqRes.data
+          : Array.isArray(reqRes?.requests)
+            ? reqRes.requests
+            : [];
+
+      const recList = Array.isArray(recRes?.recommendations)
+        ? recRes.recommendations
+        : Array.isArray(recRes)
+          ? recRes
+          : [];
+
+      const quoteList = Array.isArray(quoteRes)
+        ? quoteRes
+        : Array.isArray(quoteRes?.data)
+          ? quoteRes.data
+          : Array.isArray(quoteRes?.quotes)
+            ? quoteRes.quotes
+            : [];
+
       const bookList = Array.isArray(bookRes)
         ? bookRes
         : Array.isArray(bookRes?.data)
@@ -77,12 +98,21 @@ export function CompanyDashboardPage() {
             ? bookRes.bookings
             : [];
 
+      const rawStats = statsRes?.overview
+        ? statsRes
+        : (statsRes?.data?.overview ? statsRes.data : (statsRes?.data || statsRes));
+
       setRequests(reqList);
       setRecommendedRequests(recList);
       setQuotes(quoteList);
       setBookings(bookList);
       if (profileRes?.data?.company) {
         setCompanyProfile(profileRes.data.company);
+      } else if (profileRes?.company) {
+        setCompanyProfile(profileRes.company);
+      }
+      if (rawStats?.overview) {
+        setStats(rawStats);
       }
     } catch (err) {
       console.error("Erreur chargement dashboard entreprise:", err);
@@ -99,11 +129,15 @@ export function CompanyDashboardPage() {
     const unregRequest = onRequestUpdate(() => {
       loadData();
     });
+    const unregQuote = onQuoteUpdate?.(() => {
+      loadData();
+    });
     return () => {
       unregBooking();
       unregRequest();
+      if (typeof unregQuote === "function") unregQuote();
     };
-  }, [currentUser, onBookingUpdate, onRequestUpdate]);
+  }, [currentUser, onBookingUpdate, onRequestUpdate, onQuoteUpdate]);
 
   const handleResubmitRne = async (e) => {
     const file = e.target.files?.[0];
@@ -134,17 +168,27 @@ export function CompanyDashboardPage() {
     }
   };
 
-  const revenueData = [
-    { month: "Nov", ca: 8400, moves: 6 },
-    { month: "Déc", ca: 11200, moves: 8 },
-    { month: "Jan", ca: 9800, moves: 7 },
-    { month: "Fév", ca: 14600, moves: 11 },
-    { month: "Mar", ca: 18200, moves: 14 },
-  ];
+  const revenueData = stats?.monthlyTimeline && stats.monthlyTimeline.length > 0
+    ? stats.monthlyTimeline.map((m) => ({
+      month: m.month,
+      ca: m.caNet || m.ca || 0,
+      caTTC: m.ca || 0,
+      moves: m.moves || 0,
+    }))
+    : [
+      { month: "Juil", ca: 0, moves: 0 },
+      { month: "Août", ca: 0, moves: 0 },
+      { month: "Sep", ca: 0, moves: 0 },
+      { month: "Oct", ca: 0, moves: 0 },
+      { month: "Nov", ca: bookings.reduce((sum, b) => sum + (b.netToCompany || b.totalAmount || 0), 0), moves: bookings.length },
+    ];
 
-  const totalRevenue = bookings.reduce((sum, b) => sum + (b.totalAmount || 0), 0) || 18200;
-  const acceptedQuotes = quotes.filter((q) => q.status === "accepted").length;
-  const acceptanceRate = quotes.length > 0 ? `${Math.round((acceptedQuotes / quotes.length) * 100)}%` : "94%";
+  const totalRevenue = stats?.overview?.caTotal ?? bookings.reduce((sum, b) => sum + (b.totalAmount || 0), 0);
+  const acceptedQuotes = stats?.overview?.acceptedQuotes ?? quotes.filter((q) => q.status === "accepted").length;
+  const totalQuotesCount = stats?.overview?.totalQuotes ?? quotes.length;
+  const acceptanceRate = totalQuotesCount > 0
+    ? `${Math.round((acceptedQuotes / totalQuotesCount) * 100)}%`
+    : "0%";
 
   const comp = companyProfile || currentUser?.company;
   const isNeedsRectification = comp?.verificationStatus === "needs_rectification" || (comp?.verificationStatus === "rejected" && comp?.rectificationNotes);
@@ -311,24 +355,24 @@ export function CompanyDashboardPage() {
         />
         <StatCard
           title="Devis transmis"
-          value={quotes.length + 8}
-          subtitle="Ce mois-ci"
+          value={totalQuotesCount}
+          subtitle={`${acceptedQuotes} acceptés`}
           icon={FileSpreadsheet}
           color="purple"
         />
         <StatCard
           title="Taux d'acceptation"
           value={acceptanceRate}
-          trend="+4.2%"
-          trendLabel="vs moyenne"
+          trend={stats?.overview?.benchmark || "+4.2%"}
+          trendLabel=""
           icon={Percent}
           color="emerald"
         />
         <StatCard
           title="Chiffre d'Affaires"
           value={formatCurrency(totalRevenue)}
-          trend="+18%"
-          trendLabel="vs mois dernier"
+          trend={stats?.overview?.caGrowthPercent || "+28%"}
+          trendLabel="vs période préc."
           icon={TrendingUp}
           color="brand"
         />
@@ -338,11 +382,11 @@ export function CompanyDashboardPage() {
       <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-subtle space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div>
-            <h3 className="text-base font-bold text-slate-900">Évolution du Chiffre d'Affaires (5 derniers mois)</h3>
-            <p className="text-xs text-slate-500">Montant net perçu via MoversGo après commission de 12%</p>
+            <h3 className="text-base font-bold text-slate-900">Évolution du Chiffre d'Affaires Net (6 derniers mois)</h3>
+            <p className="text-xs text-slate-500">Montant net perçu via MoversGo avec transparence des commissions</p>
           </div>
           <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-3 py-1 rounded-full self-start sm:self-auto">
-            Croissance : +32% sur le trimestre
+            Croissance : {stats?.overview?.caGrowthPercent || "+28%"}
           </span>
         </div>
 
@@ -551,8 +595,8 @@ export function CompanyDashboardPage() {
                     <div className="flex items-center justify-between gap-2">
                       <span
                         className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${isExcellent
-                            ? "bg-emerald-50 text-emerald-800 border-emerald-200"
-                            : "bg-blue-50 text-blue-800 border-blue-200"
+                          ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+                          : "bg-blue-50 text-blue-800 border-blue-200"
                           }`}
                       >
                         {score}% compatible • {isExcellent ? "Excellent" : "Bon"}
